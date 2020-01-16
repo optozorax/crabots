@@ -9,3 +9,5 @@ edition = "2018"
 [dependencies]
 rand = "0.7"
 rand_pcg = "0.2"
+ggez = "0.5"
+color-backtrace = { version = "0.3" }
