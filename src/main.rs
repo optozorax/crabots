@@ -1,4 +1,5 @@
-use ggez;
+extern crate good_web_game as ggez;
+
 use ggez::event;
 use ggez::graphics;
 use ggez::timer;
@@ -409,12 +410,13 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 		bot.color = bot.color.interpolate(&Colors::BLACK, 0.5);
 		bot.alive = false;
 		bot.timer = DIE_TIME;
-		// println!("Die occured!");
+		//println!("Die occured!");
 	}
 
 	// Полное уничтожение
 	if !bot.alive && bot.timer <= 0 {
-		// println!("Destruction occured!");
+	// 1println!("Destruction occured!");
+		resources.free_protein += bot.protein;
 		return None;
 	}
 
@@ -436,7 +438,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 			if bot.protein >= 10 * MULTIPLY_PROTEIN {
 				let result = multiply(rng, &mut bot, &void_around);
 				if let Some((new_pos, new_bot)) = result {
-					// println!("Multiply protein occured! {} {}", bot.protein, new_bot.protein);
+				// 1println!("Multiply protein occured! {} {}", bot.protein, new_bot.protein);
 					bots.insert(new_pos, new_bot);
 				}
 				return Some((pos, bot));
@@ -449,10 +451,11 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 				Multiply => {
 					let result = multiply(rng, &mut bot, &void_around);
 					if bot.protein >= MULTIPLY_PROTEIN {
-						if let Some((new_pos, new_bot)) = result {
-							// println!("Multiply protein occured! {} {}", bot.protein, new_bot.protein);
-							bots.insert(new_pos, new_bot);
+						if let Some((new_pos, mut new_bot)) = result {
+							new_bot.eip = ProgramPos(0);
 							bot.eip = comand.goto_success;
+						// 1println!("Multiply occured! {} {}", bot.protein, new_bot.protein);
+							bots.insert(new_pos, new_bot);
 							return Some((pos, bot));
 						} else {
 							bot.eip = comand.goto_fail;
@@ -463,7 +466,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 				},
 				Photosynthesis => {
 					if resources.free_protein > 0 && resources.carbon > 0 {
-						resources.free_protein -= 1;
+						//resources.free_protein -= 1;
 						bot.protein += 1;
 
 						resources.carbon -= 1;
@@ -471,7 +474,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 
 						bot.color = bot.color.interpolate(&Colors::GREEN, 0.03);
 						bot.eip = comand.goto_success;
-						// println!("Photosynthesis occured!");
+					// 1println!("Photosynthesis occured!");
 						return Some((pos, bot));
 					} else {
 						bot.eip = comand.goto_fail;
@@ -492,7 +495,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 
 								bot.color = bot.color.interpolate(&Colors::RED, 0.03);
 								bot.eip = comand.goto_success;
-								// println!("Attack occured!");
+							// 1println!("Attack occured!");
 								return Some((pos, bot));	
 							} else {
 								bot.eip = comand.goto_fail;
@@ -511,7 +514,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 
 						bot.color = bot.color.interpolate(&Colors::GRAY, 0.03);
 						bot.timer = bot.timer.saturating_sub(10);
-						// println!("Food occured!");
+					// 1println!("Food occured!");
 						return Some((pos, bot));
 					} else {
 						bot.eip = comand.goto_fail;
@@ -521,7 +524,8 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 					if void_around.len() > 0 {
 						let new_pos = void_around.choose(rng).unwrap();
 						bot.color = bot.color.interpolate(&Colors::WHITE, 0.001);
-						// println!("Move occured!");
+						//println!("Move occured!");
+						bot.eip = comand.goto_success;
 						return Some((new_pos.clone(), bot));
 					} else {
 						bot.eip = comand.goto_fail;
@@ -537,7 +541,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 			bot.protein -= 1;
 			resources.free_protein += 1;
 		}
-		// println!("After die occured!");
+		//println!("After die occured!");
 		return Some((pos, bot));
 	}
 
@@ -551,9 +555,9 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 	}
 }
 
-struct WorldState {
+struct WorldState<R: Rng> {
 	world: World,
-	rng: Pcg32,
+	rng: R,
 	draw_mul: usize,
 }
 
@@ -578,11 +582,11 @@ fn set_pixel(pos: &Vec2i, color: &Color, ctx: &mut ggez::Context, draw_mul: usiz
 	Ok(())
 }
 
-impl event::EventHandler for WorldState {
+impl<R: Rng> event::EventHandler for WorldState<R> {
 	fn update(&mut self, _ctx: &mut ggez::Context) -> ggez::GameResult {
-		// println!("--------------------------------------------------");
+	// 1println!("--------------------------------------------------");
 		process_world(&mut self.rng, &mut self.world);
-		//timer::sleep(time::Duration::from_millis(10));
+		//timer::sleep(time::Duration::from_millis(1000));
 		Ok(())
 	}
 
@@ -595,7 +599,7 @@ impl event::EventHandler for WorldState {
 			set_pixel(pos, &bot.color, ctx, self.draw_mul)?;
 		}
 
-		graphics::set_window_title(&ctx, format!("fps: {:?}, bots: {:?}", timer::fps(&ctx) as i32, self.world.bots.len()).as_str());
+		graphics::set_window_title(&ctx, format!("fps: {:?}, bots: {:?}, protein: {:?}", timer::fps(&ctx) as i32, self.world.bots.len(), self.world.resources.free_protein).as_str());
 
 		graphics::present(ctx)?;
 		Ok(())
@@ -605,12 +609,12 @@ impl event::EventHandler for WorldState {
 pub fn main() -> ggez::GameResult { 
 	color_backtrace::install();
 
-	let mut rng = Pcg32::from_seed(SEED.clone());
+	let mut rng = rand::thread_rng();
 
 	let mut world_state = WorldState {
 		world: init_world(&mut rng),
 		rng: rng,
-		draw_mul: 5
+		draw_mul: 1
 	};
 
 	let cb = ggez::ContextBuilder::new("super_simple", "ggez");
@@ -632,6 +636,10 @@ pub fn main() -> ggez::GameResult {
 			audio: false,
 		})
 		.build()?;
+
+	/*dbg!(Program::make_random(&mut world_state.rng));
+	dbg!(Program::make_random(&mut world_state.rng));
+	Ok(())*/
 	event::run(ctx, event_loop, &mut world_state)
 }
 
@@ -682,13 +690,13 @@ const MOORE_NEIGHBORHOOD: [Vec2i; 8] = [
 ];
 
 
-const BOTS_COUNT_START: u32 = 400;
-const WORLD_SIZE: Vec2i = Vec2i { x: 100, y: 100 };
+const BOTS_COUNT_START: u32 = 4000;
+const WORLD_SIZE: Vec2i = Vec2i { x: 500, y: 500 };
 const FREE_PROTEIN_START: u32 = 300;
 const OXYGEN_START: u32 = 100;
 const CARBON_START: u32 = 100;
 const DIE_TIME: u32 = 320;
 const MAX_COMMANDS_PER_STEP: usize = 3;
 const MULTIPLY_PROTEIN: u32 = 4;
-const PROGRAM_SIZE: usize = 3;
+const PROGRAM_SIZE: usize = 15;
 const SEED: [u8; 16] = [61, 84, 54, 33, 20, 21, 2, 3, 22, 54, 27, 36, 80, 81, 96, 96];

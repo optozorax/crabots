@@ -9,5 +9,6 @@ edition = "2018"
 [dependencies]
 rand = "0.7"
 rand_pcg = "0.2"
-ggez = "0.5"
+# ggez = "0.5"
+good-web-game = { path = "C:/Users/zorax/Desktop/good-web-game-master" }
 color-backtrace = { version = "0.3" }
