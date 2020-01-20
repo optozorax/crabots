@@ -1,19 +1,12 @@
-extern crate good_web_game as ggez;
-
-use ggez::event;
-use ggez::graphics;
-use ggez::timer;
-use ggez::conf;
-use ggez::nalgebra as na;
-
+use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use std::hash::BuildHasher;
 use std::hash::Hash;
-use std::ops;
-use std::time;
+
+use bufdraw::vec::Vec2i;
 
 use std::collections::HashMap;
-use rand::{Rng, SeedableRng};
+use rand::Rng;
 use rand_pcg::Pcg32;
 
 #[derive(Clone, Debug)]
@@ -21,7 +14,7 @@ use rand_pcg::Pcg32;
 struct UnitFloat(f64);
 
 #[derive(Clone, Debug)]
-pub struct Color {
+struct Color {
 	r: UnitFloat,
 	g: UnitFloat,
 	b: UnitFloat,
@@ -30,12 +23,6 @@ pub struct Color {
 #[derive(Clone, Debug)]
 /// Integer from 0 to PROGRAM_SIZE
 struct ProgramPos(usize);
-
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
-struct Vec2i {
-	x: i32,
-	y: i32,
-}
 
 #[derive(Clone, Debug)]
 enum Comands {
@@ -219,17 +206,6 @@ fn normalize_coords(mut pos: Vec2i, size: &Vec2i) -> Vec2i {
 	pos
 }
 
-impl ops::Add<&Vec2i> for Vec2i {
-	type Output = Vec2i;
-
-	fn add(self, _rhs: &Vec2i) -> Vec2i {
-		Vec2i { 
-			x: self.x + _rhs.x, 
-			y: self.y + _rhs.y
-		}
-	}
-}
-
 trait Interpolate {
 	fn interpolate(&self, b: &Self, t: f64) -> Self;
 }
@@ -255,96 +231,6 @@ impl Interpolate for Color {
 		}
 	}	
 }
-
-/*enum BotAction {
-	Nothing,
-	Destruction,
-	Die,
-	Move { to: Vec2i },
-	Attack { to: Vec2i, hp: i32 },
-	Multiply { to: Vec2i },
-}
-
-/// Действия, которые подразумевают что в текущей клетке никого нет
-enum EmptyCellAction {
-	/// В текущую клетку хотят переместиться
-	Move { from: Vec2i },
-
-	/// В текущую клетку хотят размножиться
-	Multiply { from: Vec2i },
-}
-
-/// Действия, которые подразумевают, что в текущей клетке кто-то есть
-enum BotCellAction {
-	/// Текущую клетку атакуют
-	Attack { hp: i32 },
-
-	/// Бот из текущей клетки удаляется
-	Destruction, 
-
-	/// Бот в текущей клетке атакует кого-то, подмешать цвет атаки
-	Attacker,
-
-	/// Бот в текущей клетке размножается куда-то, подмешать цвет размножения
-	Multiplier,
-
-	/// Бот в текущей клетке перемещается куда-то
-	Mover { to: Vec2i },
-
-	/// Бот в текущей клетке умирает
-	Dier,
-}
-
-/// Одной из действий, которое свершается над клеткой другим ботом, или текущим ботом
-enum CellActions {
-	Empty(EmptyCellAction),
-	Bot(BotCellAction),	
-}*/
-
-/*trait SmartBot {
-	fn process(&mut self, around_bots: &Vec<bool>) -> BotAction;
-}
-
-impl SmartBot for Bot {
-	fn get_actions(&self, around_bots: &Vec<bool>) -> BotAction {
-		const DIE_TIME: i32 = 320;
-
-		self.timer -= 1;
-		if self.timer == 0 {
-			// Момент смерти
-			return die(&mut self);			
-		} else if self.timer < -DIE_TIME {
-			// Полное уничтожение
-			return BotAction::Destruction;
-		} else if self.timer < 0 {
-			// Действия после смерти
-			return dying(&mut self);
-		} else if self.timer > 0 {
-			// Действия при жизни
-			return living(&mut self, &around_bots);
-		}
-		unreachable!();
-
-		fn living(bot: &mut Bot, around_bots: &Vec<bool>) -> BotAction {
-
-			BotAction::Nothing
-		}
-
-		fn die(bot: &mut Bot) -> BotAction {
-			bot.color = bot.color.interpolate(&Colors::BLACK, 0.5);
-			BotAction::Nothing
-		}
-
-		fn dying(bot: &mut Bot) -> BotAction {
-			bot.color = bot.color.interpolate(&Colors::BLACK, 1.0 / DIE_TIME as f64);
-			BotAction::Nothing
-		}
-	}
-
-	fn process_actions(self: Option<Self>, actions: Vec<BotCellAction>) -> Option<Self> {
-
-	}
-}*/
 
 trait Push {
 	type Key;
@@ -381,7 +267,7 @@ fn init_world<R: Rng + ?Sized>(mut rng: &mut R) -> World {
 			x: rng.gen(),
 			y: rng.gen(),
 		};
-		bot.timer = 160;
+		bot.timer = 1600000000;
 		bot.protein = 30;
 		bot_pos = normalize_coords(bot_pos, &world.size);
 		world.bots.entry(bot_pos).or_insert(bot);
@@ -466,7 +352,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 				},
 				Photosynthesis => {
 					if resources.free_protein > 0 && resources.carbon > 0 {
-						//resources.free_protein -= 1;
+						resources.free_protein -= 1;
 						bot.protein += 1;
 
 						resources.carbon -= 1;
@@ -555,92 +441,176 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 	}
 }
 
-struct WorldState<R: Rng> {
-	world: World,
+struct RepeatedImageCamera {
+	offset: Vec2i,
+	scale: u8,
+	size: Vec2i,
+}
+
+impl RepeatedImageCamera {
+	fn to(&self, pos: Vec2i) -> Vec2i {
+		let mut pos = pos - &self.offset;
+
+		pos.x /= self.scale as i32;
+		pos.y /= self.scale as i32;
+
+		pos.x %= self.size.x;
+		pos.y %= self.size.y;
+
+		pos
+	}
+
+	fn offset(&mut self, offset: &Vec2i) {
+		self.offset += offset.clone();
+	}
+
+	fn scale(&mut self, mouse_pos: Vec2i, new_scale: u8) {
+
+	}
+}
+
+use std::time::{Duration, Instant};
+
+struct PerformanceMeasurer {
+	counter: usize,
+	total_time: Duration,
+	current_time: Instant,
+}
+
+impl PerformanceMeasurer {
+	fn new() -> Self {
+		PerformanceMeasurer {
+			counter: 0,
+			total_time: Duration::new(0, 0),
+			current_time: Instant::now(),
+		}
+	}
+
+	fn start(&mut self) {
+		self.counter += 1;
+		self.current_time = Instant::now();
+	}
+
+	fn end(&mut self, trigger_count: usize, name: &str) {
+		self.total_time += self.current_time.elapsed();
+		if self.counter % trigger_count == 0 {
+			let average_time = self.total_time / self.counter as u32;
+			println!("{} performance: avg = {:?}, {:.1} fps", name, average_time, 1.0 / average_time.as_secs_f64());
+		}
+	}
+}
+
+use bufdraw::*;
+use bufdraw::image::*;
+
+struct Window<R: Rng> {
+    image: Image,
+
+    world: World,
 	rng: R,
 	draw_mul: usize,
+	cam: RepeatedImageCamera,
+
+	draw_performance: PerformanceMeasurer,
+	simulate_performance: PerformanceMeasurer,
+
+	last_mouse_pos: Vec2i,
+	mouse_move: bool,
 }
 
-fn set_pixel(pos: &Vec2i, color: &Color, ctx: &mut ggez::Context, draw_mul: usize) -> ggez::GameResult {
-	let pixel = graphics::Mesh::new_rectangle(
-		ctx,
-		graphics::DrawMode::fill(),
-		graphics::Rect { 
-			x: (pos.x * draw_mul as i32) as f32, 
-			y: (pos.y * draw_mul as i32) as f32, 
-			w: draw_mul as f32, 
-			h: draw_mul as f32, 
-		},
-		[
-			color.r.0 as f32, 
-			color.g.0 as f32, 
-			color.b.0 as f32, 
-			1.0,
-		].into(),
-	)?;
-	graphics::draw(ctx, &pixel, (na::Point2::new(0.0, 0.0),))?;
-	Ok(())
+impl<R: Rng> ImageTrait for Window<R> {
+    fn get_rgba8_buffer(&self) -> &[u8] { &self.image.buffer }
+    fn get_width(&self) -> usize { self.image.width }
+    fn get_height(&self) -> usize { self.image.height }
 }
 
-impl<R: Rng> event::EventHandler for WorldState<R> {
-	fn update(&mut self, _ctx: &mut ggez::Context) -> ggez::GameResult {
-	// 1println!("--------------------------------------------------");
-		process_world(&mut self.rng, &mut self.world);
-		//timer::sleep(time::Duration::from_millis(1000));
-		Ok(())
-	}
-
-	fn draw(&mut self, ctx: &mut ggez::Context) -> ggez::GameResult {
-		graphics::clear(ctx, [1.0, 1.0, 1.0, 1.0].into());
-
-		set_pixel(&Vec2i { x: 0, y: 0 }, &Colors::BLACK, ctx, self.world.size.x as usize * self.draw_mul)?;
-
-		for (pos, bot) in self.world.bots.iter() {
-			set_pixel(pos, &bot.color, ctx, self.draw_mul)?;
-		}
-
-		graphics::set_window_title(&ctx, format!("fps: {:?}, bots: {:?}, protein: {:?}", timer::fps(&ctx) as i32, self.world.bots.len(), self.world.resources.free_protein).as_str());
-
-		graphics::present(ctx)?;
-		Ok(())
-	}
+impl<R: Rng> Window<R> {
+    fn new(mut rng: R) -> Self {
+        Window {
+            image: Image::new(&Vec2i::new(1920, 1080)),
+            world: init_world(&mut rng),
+            rng: rng,
+            draw_mul: 3,
+            cam: RepeatedImageCamera {
+				offset: Vec2i { x: 10, y: 10 },
+				scale: 1,
+				size: WORLD_SIZE,
+			},
+			draw_performance: PerformanceMeasurer::new(),
+			simulate_performance: PerformanceMeasurer::new(),
+			last_mouse_pos: Vec2i::default(),
+			mouse_move: false,
+        }
+    }
 }
 
-pub fn main() -> ggez::GameResult { 
-	color_backtrace::install();
+impl<R: Rng> MyEvents for Window<R> {
+    fn update(&mut self) {
+    	self.simulate_performance.start();
+    	process_world(&mut self.rng, &mut self.world);
+    	self.simulate_performance.end(100, "simulate");
+    }
 
-	let mut rng = rand::thread_rng();
+    fn draw(&mut self) {
+    	self.draw_performance.start();
+    	let bots = &self.world.bots;
+    	let cam = &self.cam;
+    	let mut cache: Option<(Vec2i, i32)> = None;
+        function_for_all_pixels(&mut self.image, move |x, y| {
+        	let pos = cam.to((x, y).into());
+        	if let Some((cached_pos, color)) = &cache {
+        		if cached_pos == &pos {
+        			return *color
+        		}
+        	}
+        	let result = if let Some(bot) = bots.get(&pos) {
+				(bot.color.r.0 * 255.0) as i32
+			} else {
+				0
+			};
+			cache = Some((pos, result.clone()));
+			return result
+        });
+        self.draw_performance.end(100, "draw");
+    }
 
-	let mut world_state = WorldState {
-		world: init_world(&mut rng),
-		rng: rng,
-		draw_mul: 1
-	};
+    fn resize_event(&mut self, new_size: Vec2i) {
+        self.image.resize_lazy(&new_size);
+    }
 
-	let cb = ggez::ContextBuilder::new("super_simple", "ggez");
-	let (ctx, event_loop) = &mut cb
-		.window_mode(conf::WindowMode {
-			width: (world_state.world.size.x * world_state.draw_mul as i32) as f32,
-			height: (world_state.world.size.y * world_state.draw_mul as i32) as f32,
-			maximized: false,
-			fullscreen_type: conf::FullscreenType::Windowed,
-			borderless: false,
-			min_width: 0.0,
-			max_width: 0.0,
-			min_height: 0.0,
-			max_height: 0.0,
-			resizable: false,
-		})
-		.modules(conf::ModuleConf {
-			gamepad: false,
-			audio: false,
-		})
-		.build()?;
+    fn mouse_motion_event(&mut self, pos: Vec2i, _offset: Vec2i) {
+    	if self.mouse_move {
+    		self.cam.offset(&(pos.clone() - &self.last_mouse_pos));
+    	}
+    	self.last_mouse_pos = pos;
+    }
 
-	/*dbg!(Program::make_random(&mut world_state.rng));
-	dbg!(Program::make_random(&mut world_state.rng));
-	Ok(())*/
-	event::run(ctx, event_loop, &mut world_state)
+    fn mouse_button_event(&mut self, button: MouseButton, state: ButtonState, pos: Vec2i) {
+    	self.last_mouse_pos = pos;
+    	use MouseButton::*;
+    	use ButtonState::*;
+    	match button {
+    		Left => {match state {
+    			Down => {
+    				self.mouse_move = true;
+    			},
+    			Up => {
+    				self.mouse_move = false;
+    			},
+    			_ => {},
+    		}},
+    		_ => {},
+    	}
+    }
+
+    fn mouse_wheel_event(&mut self, pos: Vec2i, _dir: MouseWheel, _press: bool) {
+    	self.last_mouse_pos = pos;
+    }
+}
+
+fn main() {
+	let rng = Pcg32::from_seed(SEED);
+    start(Window::new(rng));
 }
 
 mod Colors {
@@ -690,8 +660,8 @@ const MOORE_NEIGHBORHOOD: [Vec2i; 8] = [
 ];
 
 
-const BOTS_COUNT_START: u32 = 4000;
-const WORLD_SIZE: Vec2i = Vec2i { x: 500, y: 500 };
+const BOTS_COUNT_START: u32 = 400;
+const WORLD_SIZE: Vec2i = Vec2i { x: 100, y: 100 };
 const FREE_PROTEIN_START: u32 = 300;
 const OXYGEN_START: u32 = 100;
 const CARBON_START: u32 = 100;
