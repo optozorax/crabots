@@ -502,16 +502,18 @@ impl PerformanceMeasurer {
 		self.current_time = bufdraw::now();
 	}
 
-	fn end(&mut self, trigger_count: usize, name: &str) {
+	fn end(&mut self, trigger_count: usize, name: &str, mul: usize, div: usize) {
 		self.total_time += bufdraw::now() - self.current_time;
 		if self.counter % trigger_count == 0 {
 			let average_time = self.total_time / self.counter as f64;
-			info!("{} performance: avg = {:?}, {:.1} fps", name, average_time, 1.0 / average_time);
+			let fps = 1.0 / average_time;
+			let normalized_fps = fps / div as f64 * mul as f64;
+			info!("{} performance: avg = {:?}, {:.1} fps, normalized_fps: {:.1}", name, average_time, fps, normalized_fps);
 		}
 	}
 }
 
-use log::info;
+use log::{info, LevelFilter};
 
 use bufdraw::*;
 use bufdraw::image::*;
@@ -559,7 +561,7 @@ impl<R: Rng> MyEvents for Window<R> {
     fn update(&mut self) {
     	self.simulate_performance.start();
     	process_world(&mut self.rng, &mut self.world);
-    	self.simulate_performance.end(100, "simulate");
+    	self.simulate_performance.end(100, "simulate", 1, 1);
     }
 
     fn draw(&mut self) {
@@ -587,7 +589,7 @@ impl<R: Rng> MyEvents for Window<R> {
 			cache = Some((pos, result.clone()));
 			return result
         });
-        self.draw_performance.end(100, "draw");
+        self.draw_performance.end(100, "draw", self.image.width * self.image.height, 500 * 500);
     }
 
     fn resize_event(&mut self, new_size: Vec2i) {
@@ -643,6 +645,7 @@ impl<R: Rng> MyEvents for Window<R> {
 }
 
 fn main() {
+	log::set_max_level(LevelFilter::Info);
 	let rng = Pcg32::from_seed(SEED);
     start(Window::new(rng));
 }
