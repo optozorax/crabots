@@ -448,24 +448,37 @@ struct RepeatedImageCamera {
 }
 
 impl RepeatedImageCamera {
-	fn to(&self, pos: Vec2i) -> Vec2i {
+	fn mod_size(x: i32, size: i32) -> i32 {
+		if x > 0 {
+			x % size
+		} else {
+			size - ((-x) % size)
+		}
+	}
+
+	pub fn to(&self, pos: Vec2i) -> Vec2i {
 		let mut pos = pos - &self.offset;
 
 		pos.x /= self.scale as i32;
 		pos.y /= self.scale as i32;
 
-		pos.x %= self.size.x;
-		pos.y %= self.size.y;
+		pos.x = RepeatedImageCamera::mod_size(pos.x, self.size.x);
+		pos.y = RepeatedImageCamera::mod_size(pos.y, self.size.y);
 
 		pos
 	}
 
-	fn offset(&mut self, offset: &Vec2i) {
+	pub fn offset(&mut self, offset: &Vec2i) {
 		self.offset += offset.clone();
 	}
 
-	fn scale(&mut self, mouse_pos: Vec2i, new_scale: u8) {
+	pub fn scale(&mut self, mouse_pos: &Vec2i, add_to_scale: i8) {
+		if self.scale == 1 && add_to_scale < 0 { return; }
+		if self.scale == 128 && add_to_scale > 0 { return; }
 
+		let new_scale = (self.scale as i8 + add_to_scale) as u8;
+		self.offset = (self.offset.clone() - mouse_pos) * new_scale as i32 / self.scale as i32 + mouse_pos;
+		self.scale = new_scale;
 	}
 }
 
@@ -555,18 +568,23 @@ impl<R: Rng> MyEvents for Window<R> {
     	self.draw_performance.start();
     	let bots = &self.world.bots;
     	let cam = &self.cam;
-    	let mut cache: Option<(Vec2i, i32)> = None;
+    	let mut cache: Option<(Vec2i, bufdraw::image::Color)> = None;
         function_for_all_pixels(&mut self.image, move |x, y| {
         	let pos = cam.to((x, y).into());
         	if let Some((cached_pos, color)) = &cache {
         		if cached_pos == &pos {
-        			return *color
+        			return color.clone()
         		}
         	}
         	let result = if let Some(bot) = bots.get(&pos) {
-				(bot.color.r.0 * 255.0) as i32
+				bufdraw::image::Color::rgba(
+					(bot.color.r.0 * 255.0) as u8, 
+					(bot.color.g.0 * 255.0) as u8, 
+					(bot.color.b.0 * 255.0) as u8, 
+					255, 
+				)
 			} else {
-				0
+				bufdraw::image::Color::rgba(0, 0, 0, 255)
 			};
 			cache = Some((pos, result.clone()));
 			return result
@@ -605,6 +623,20 @@ impl<R: Rng> MyEvents for Window<R> {
 
     fn mouse_wheel_event(&mut self, pos: Vec2i, _dir: MouseWheel, _press: bool) {
     	self.last_mouse_pos = pos;
+    }
+
+    fn key_event(&mut self, keycode: KeyCode, _keymods: KeyMods, state: ButtonState) {
+    	if let bufdraw::ButtonState::Down = state {
+	    	match keycode {
+	    		KeyCode::U => {
+	    			self.cam.scale(&self.last_mouse_pos, 1);
+	    		},
+	    		KeyCode::K => {
+	    			self.cam.scale(&self.last_mouse_pos, -1);
+	    		},
+	    		_ => {},
+	    	}
+	    }
     }
 }
 
