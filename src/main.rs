@@ -293,7 +293,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 
 	// Момент смерти
 	if bot.alive && bot.timer <= 0 {
-		bot.color = bot.color.interpolate(&Colors::BLACK, 0.5);
+		bot.color = bot.color.interpolate(&colors::BLACK, 0.5);
 		bot.alive = false;
 		bot.timer = DIE_TIME;
 		//println!("Die occured!");
@@ -358,7 +358,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 						resources.carbon -= 1;
 						resources.oxygen += 1;
 
-						bot.color = bot.color.interpolate(&Colors::GREEN, 0.03);
+						bot.color = bot.color.interpolate(&colors::GREEN, 0.03);
 						bot.eip = comand.goto_success;
 					// 1println!("Photosynthesis occured!");
 						return Some((pos, bot));
@@ -379,7 +379,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 
 								bots.insert(attack_to.clone(), attacked);
 
-								bot.color = bot.color.interpolate(&Colors::RED, 0.03);
+								bot.color = bot.color.interpolate(&colors::RED, 0.03);
 								bot.eip = comand.goto_success;
 							// 1println!("Attack occured!");
 								return Some((pos, bot));	
@@ -398,7 +398,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 						resources.free_protein -= 1;
 						bot.protein += 1;
 
-						bot.color = bot.color.interpolate(&Colors::GRAY, 0.03);
+						bot.color = bot.color.interpolate(&colors::GRAY, 0.03);
 						bot.timer = bot.timer.saturating_sub(10);
 					// 1println!("Food occured!");
 						return Some((pos, bot));
@@ -409,7 +409,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 				Move => {
 					if void_around.len() > 0 {
 						let new_pos = void_around.choose(rng).unwrap();
-						bot.color = bot.color.interpolate(&Colors::WHITE, 0.001);
+						bot.color = bot.color.interpolate(&colors::WHITE, 0.001);
 						//println!("Move occured!");
 						bot.eip = comand.goto_success;
 						return Some((new_pos.clone(), bot));
@@ -422,7 +422,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 		return None;
 	} else {
 		// Действия после смерти
-		bot.color = bot.color.interpolate(&Colors::BLACK, 1.0 / DIE_TIME as f64);
+		bot.color = bot.color.interpolate(&colors::BLACK, 1.0 / DIE_TIME as f64);
 		if bot.protein > 1 {
 			bot.protein -= 1;
 			resources.free_protein += 1;
@@ -482,36 +482,36 @@ impl RepeatedImageCamera {
 	}
 }
 
-use std::time::{Duration, Instant};
-
 struct PerformanceMeasurer {
 	counter: usize,
-	total_time: Duration,
-	current_time: Instant,
+	total_time: f64,
+	current_time: f64,
 }
 
 impl PerformanceMeasurer {
 	fn new() -> Self {
 		PerformanceMeasurer {
 			counter: 0,
-			total_time: Duration::new(0, 0),
-			current_time: Instant::now(),
+			total_time: 0.0,
+			current_time: bufdraw::now(),
 		}
 	}
 
 	fn start(&mut self) {
 		self.counter += 1;
-		self.current_time = Instant::now();
+		self.current_time = bufdraw::now();
 	}
 
 	fn end(&mut self, trigger_count: usize, name: &str) {
-		self.total_time += self.current_time.elapsed();
+		self.total_time += bufdraw::now() - self.current_time;
 		if self.counter % trigger_count == 0 {
-			let average_time = self.total_time / self.counter as u32;
-			println!("{} performance: avg = {:?}, {:.1} fps", name, average_time, 1.0 / average_time.as_secs_f64());
+			let average_time = self.total_time / self.counter as f64;
+			info!("{} performance: avg = {:?}, {:.1} fps", name, average_time, 1.0 / average_time);
 		}
 	}
 }
+
+use log::info;
 
 use bufdraw::*;
 use bufdraw::image::*;
@@ -521,7 +521,6 @@ struct Window<R: Rng> {
 
     world: World,
 	rng: R,
-	draw_mul: usize,
 	cam: RepeatedImageCamera,
 
 	draw_performance: PerformanceMeasurer,
@@ -543,7 +542,6 @@ impl<R: Rng> Window<R> {
             image: Image::new(&Vec2i::new(1920, 1080)),
             world: init_world(&mut rng),
             rng: rng,
-            draw_mul: 3,
             cam: RepeatedImageCamera {
 				offset: Vec2i { x: 10, y: 10 },
 				scale: 1,
@@ -638,6 +636,10 @@ impl<R: Rng> MyEvents for Window<R> {
 	    	}
 	    }
     }
+
+    fn char_event(&mut self, character: char, _keymods: KeyMods, _repeat: bool) {
+    	info!("char: {}", character);
+    }
 }
 
 fn main() {
@@ -645,7 +647,7 @@ fn main() {
     start(Window::new(rng));
 }
 
-mod Colors {
+mod colors {
 	use super::Color;
 	use super::UnitFloat;
 
