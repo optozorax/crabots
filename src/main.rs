@@ -441,44 +441,72 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 	}
 }
 
-struct RepeatedImageCamera {
+#[derive(Clone)]
+struct ImageCamera {
 	offset: Vec2i,
 	scale: u8,
-	size: Vec2i,
 }
 
-impl RepeatedImageCamera {
-	fn mod_size(x: i32, size: i32) -> i32 {
-		if x > 0 {
-			x % size
-		} else {
-			size - ((-x) % size)
-		}
-	}
+trait Camera {
+	fn to(&self, pos: Vec2i) -> Vec2i;
+	fn offset(&mut self, offset: &Vec2i);
+	fn scale(&mut self, mouse_pos: &Vec2i, add_to_scale: i8);
+}
 
-	pub fn to(&self, pos: Vec2i) -> Vec2i {
+impl Camera for ImageCamera {
+	fn to(&self, pos: Vec2i) -> Vec2i {
 		let mut pos = pos - &self.offset;
 
 		pos.x /= self.scale as i32;
 		pos.y /= self.scale as i32;
 
-		pos.x = RepeatedImageCamera::mod_size(pos.x, self.size.x);
-		pos.y = RepeatedImageCamera::mod_size(pos.y, self.size.y);
-
 		pos
 	}
 
-	pub fn offset(&mut self, offset: &Vec2i) {
+	fn offset(&mut self, offset: &Vec2i) {
 		self.offset += offset.clone();
 	}
 
-	pub fn scale(&mut self, mouse_pos: &Vec2i, add_to_scale: i8) {
+	fn scale(&mut self, mouse_pos: &Vec2i, add_to_scale: i8) {
 		if self.scale == 1 && add_to_scale < 0 { return; }
 		if self.scale == 128 && add_to_scale > 0 { return; }
 
 		let new_scale = (self.scale as i8 + add_to_scale) as u8;
 		self.offset = (self.offset.clone() - mouse_pos) * new_scale as i32 / self.scale as i32 + mouse_pos;
 		self.scale = new_scale;
+	}	
+}
+
+#[derive(Clone)]
+struct RepeatedImageCamera {
+	cam: ImageCamera,
+	size: Vec2i,
+}
+
+impl Camera for RepeatedImageCamera {
+	fn to(&self, mut pos: Vec2i) -> Vec2i {
+		pos = self.cam.to(pos);
+
+		pos.x = mod_size(pos.x, self.size.x);
+		pos.y = mod_size(pos.y, self.size.y);
+
+		return pos;
+
+		fn mod_size(x: i32, size: i32) -> i32 {
+			if x > 0 {
+				x % size
+			} else {
+				size - ((-x) % size)
+			}
+		}
+	}
+
+	fn offset(&mut self, offset: &Vec2i) {
+		self.cam.offset(offset);
+	}
+
+	fn scale(&mut self, mouse_pos: &Vec2i, add_to_scale: i8) {
+		self.cam.scale(mouse_pos, add_to_scale);
 	}
 }
 
@@ -518,12 +546,12 @@ use log::{info, LevelFilter};
 use bufdraw::*;
 use bufdraw::image::*;
 
-struct Window<R: Rng> {
+struct Window<R: Rng, C: Camera> {
     image: Image,
 
     world: World,
 	rng: R,
-	cam: RepeatedImageCamera,
+	cam: C,
 
 	draw_performance: PerformanceMeasurer,
 	simulate_performance: PerformanceMeasurer,
@@ -532,23 +560,19 @@ struct Window<R: Rng> {
 	mouse_move: bool,
 }
 
-impl<R: Rng> ImageTrait for Window<R> {
+impl<R: Rng, C: Camera> ImageTrait for Window<R, C> {
     fn get_rgba8_buffer(&self) -> &[u8] { &self.image.buffer }
     fn get_width(&self) -> usize { self.image.width }
     fn get_height(&self) -> usize { self.image.height }
 }
 
-impl<R: Rng> Window<R> {
-    fn new(mut rng: R) -> Self {
+impl<R: Rng, C: Camera> Window<R, C> {
+    fn new(mut rng: R, cam: C) -> Self {
         Window {
             image: Image::new(&Vec2i::new(1920, 1080)),
             world: init_world(&mut rng),
             rng: rng,
-            cam: RepeatedImageCamera {
-				offset: Vec2i { x: 10, y: 10 },
-				scale: 1,
-				size: WORLD_SIZE,
-			},
+            cam: cam,
 			draw_performance: PerformanceMeasurer::new(),
 			simulate_performance: PerformanceMeasurer::new(),
 			last_mouse_pos: Vec2i::default(),
@@ -557,7 +581,7 @@ impl<R: Rng> Window<R> {
     }
 }
 
-impl<R: Rng> MyEvents for Window<R> {
+impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
     fn update(&mut self) {
     	self.simulate_performance.start();
     	process_world(&mut self.rng, &mut self.world);
@@ -644,10 +668,37 @@ impl<R: Rng> MyEvents for Window<R> {
     }
 }
 
+use log::{Record, Level, Metadata};
+
+static CONSOLE_LOGGER: ConsoleLogger = ConsoleLogger;
+
+struct ConsoleLogger;
+
+impl log::Log for ConsoleLogger {
+  fn enabled(&self, metadata: &Metadata) -> bool {
+     metadata.level() <= Level::Info
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            println!("{} - {}", record.level(), record.args());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
 fn main() {
-	log::set_max_level(LevelFilter::Info);
 	let rng = Pcg32::from_seed(SEED);
-    start(Window::new(rng));
+	let camera = ImageCamera {
+		offset: Vec2i { x: 0, y: 0 },
+		scale: 3,
+	};
+	let repeated_camera = RepeatedImageCamera {
+		cam: camera.clone(),
+		size: WORLD_SIZE,
+	};
+    start(Window::new(rng, camera));
 }
 
 mod colors {
