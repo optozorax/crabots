@@ -623,6 +623,18 @@ use log::info;
 use bufdraw::*;
 use bufdraw::image::*;
 
+use ambassador::delegatable_trait_remote;
+use ambassador::Delegate;
+
+#[delegatable_trait_remote]
+pub trait ImageTrait {
+    fn get_rgba8_buffer(&self) -> &[u8];
+    fn get_width(&self) -> usize;
+    fn get_height(&self) -> usize;
+}
+
+#[derive(Delegate)]
+#[delegate(ImageTrait, target = "image")]
 struct Window<R: Rng, C: Camera> {
     image: Image,
 
@@ -635,12 +647,6 @@ struct Window<R: Rng, C: Camera> {
 
 	last_mouse_pos: Vec2i,
 	mouse_move: bool,
-}
-
-impl<R: Rng, C: Camera> ImageTrait for Window<R, C> {
-    fn get_rgba8_buffer(&self) -> &[u8] { &self.image.buffer }
-    fn get_width(&self) -> usize { self.image.width }
-    fn get_height(&self) -> usize { self.image.height }
 }
 
 impl<R: Rng, C: Camera> Window<R, C> {
