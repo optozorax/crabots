@@ -721,10 +721,10 @@ impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
     fn key_event(&mut self, keycode: KeyCode, _keymods: KeyMods, state: ButtonState) {
     	if let bufdraw::ButtonState::Down = state {
 	    	match keycode {
-	    		KeyCode::U => {
+	    		KeyCode::A => {
 	    			self.cam.scale(&self.last_mouse_pos, 1);
 	    		},
-	    		KeyCode::K => {
+	    		KeyCode::D => {
 	    			self.cam.scale(&self.last_mouse_pos, -1);
 	    		},
 	    		_ => {},
