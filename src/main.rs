@@ -240,8 +240,8 @@ fn insert_random_bot<R: Rng + ?Sized>(mut rng: &mut R, world: &mut World) -> boo
 		x: rng.gen(),
 		y: rng.gen(),
 	};
-	bot.timer = 160 + rng.gen_range(0, 160);
-	bot.protein = 30;
+	bot.timer = LIVE_START_TIME;
+	bot.protein = 0;
 	bot_pos = normalize_coords(bot_pos, &world.size);
 
 	match world.bots.entry(bot_pos) {
@@ -318,7 +318,7 @@ impl Stole for u32 {
 impl Drop for Bot {
     fn drop(&mut self) {
     	if self.protein > 0 && self.protein != 30 {
-    		info!("Dropping bot, protein: {:5}", self.protein);
+    		// info!("Dropping bot, protein: {:5}", self.protein);
     		panic!();
     	}
     }
@@ -335,7 +335,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 		bot.color = bot.color.interpolate(&colors::BLACK, 0.5);
 		bot.alive = false;
 		bot.timer = DIE_TIME;
-		info!("Die occured!");
+		// info!("Die occured!");
 	}
 
 	// Полное уничтожение
@@ -361,7 +361,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 			if bot.protein >= 10 * MULTIPLY_PROTEIN {
 				let result = multiply(rng, &mut bot, &void_around);
 				if let Some((new_pos, new_bot)) = result {
-					info!("Multiply protein occured! {} {}", bot.protein, new_bot.protein);
+					// info!("Multiply protein occured! {} {}", bot.protein, new_bot.protein);
 					bots.insert(new_pos, new_bot);
 				}
 				return Some((pos, bot));
@@ -377,7 +377,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 						if let Some((new_pos, mut new_bot)) = result {
 							new_bot.eip = ProgramPos(0);
 							bot.eip = comand.goto_success;
-							info!("Multiply occured! {} {}", bot.protein, new_bot.protein);
+							// info!("Multiply occured! {} {}", bot.protein, new_bot.protein);
 							bots.insert(new_pos, new_bot);
 							return Some((pos, bot));
 						} else {
@@ -394,7 +394,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 
 						bot.color = bot.color.interpolate(&colors::GREEN, 0.03);
 						bot.eip = comand.goto_success;
-						info!("Photosynthesis occured!");
+						// info!("Photosynthesis occured!");
 						return Some((pos, bot));
 					} else {
 						bot.eip = comand.goto_fail;
@@ -413,7 +413,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 
 								bot.color = bot.color.interpolate(&colors::RED, 0.03);
 								bot.eip = comand.goto_success;
-								info!("Attack occured!");
+								// info!("Attack occured!");
 								return Some((pos, bot));	
 							} else {
 								bot.eip = comand.goto_fail;
@@ -431,7 +431,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 
 						bot.color = bot.color.interpolate(&colors::GRAY, 0.03);
 						bot.timer = bot.timer.saturating_sub(10);
-						info!("Food occured!");
+						// info!("Food occured!");
 						return Some((pos, bot));
 					} else {
 						bot.eip = comand.goto_fail;
@@ -441,7 +441,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 					if void_around.len() > 0 {
 						let new_pos = void_around.choose(rng).unwrap();
 						bot.color = bot.color.interpolate(&colors::WHITE, 0.001);
-						//info!("Move occured!");
+						//// info!("Move occured!");
 						bot.eip = comand.goto_success;
 						return Some((new_pos.clone(), bot));
 					} else {
@@ -453,26 +453,29 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 		return destruct(resources, &mut bot);
 	} else {
 		// Действия после смерти
-		bot.color = bot.color.interpolate(&colors::BLACK, 1.0 / DIE_TIME as f64);
+		bot.color = bot.color.interpolate(&colors::BLACK, 0.005);
 		if bot.protein.can_stole() {
 			resources.free_protein.stole(&mut bot.protein);
 		}
-		//info!("After die occured!");
+		//// info!("After die occured!");
 		return Some((pos, bot));
 	}
 
 	fn multiply<R: Rng + ?Sized>(rng: &mut R, bot: &mut Bot, void_around: &Vec<Vec2i>) -> Option<(Vec2i, Bot)> {
 		let new_pos = void_around.choose(rng)?;
 		let mut new_bot = bot.clone();
-		new_bot.mutate(rng);
+		if rng.gen_range(0, 3) == 0 {
+			new_bot.mutate(rng);	
+		}
 		new_bot.protein /= 2;
+		new_bot.timer = LIVE_START_TIME;
 		bot.protein -= new_bot.protein;
 		new_bot.eip = ProgramPos(0);
 		Some((new_pos.clone(), new_bot))
 	}
 
 	fn destruct(resources: &mut Resources, bot: &mut Bot) -> Option<(Vec2i, Bot)> {
-		info!("Destruction occured!");
+		// info!("Destruction occured!");
 		resources.free_protein.stole_full(&mut bot.protein);
 		return None;
 	}
@@ -566,13 +569,16 @@ impl PerformanceMeasurer {
 		self.current_time = bufdraw::now();
 	}
 
-	fn end(&mut self, trigger_count: usize, name: &str) {
+	fn end(&mut self, trigger_count: usize, name: &str) -> bool {
 		self.counter += 1;
 		self.total_time += bufdraw::now() - self.current_time;
 		if self.counter % trigger_count == 0 {
 			let average_time = self.total_time / self.counter as f64;
 			let fps = 1.0 / average_time;
 			info!("{}: {:.1} fps", name, fps);
+			return true;
+		} else {
+			return false;
 		}
 	}
 }
@@ -620,7 +626,9 @@ impl<R: Rng, C: Camera> Window<R, C> {
 impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
     fn update(&mut self) {
     	self.simulate_performance.start();
-    	process_world(&mut self.rng, &mut self.world);
+    	for _ in 0..10 {
+    		process_world(&mut self.rng, &mut self.world);
+    	}
 
     	/*if self.world.resources.free_protein > 30 {
     		if insert_random_bot(&mut self.rng, &mut self.world) {
@@ -628,16 +636,20 @@ impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
     		}
     	}*/
 
-    	let all_protein = self.world.bots.iter().fold(0, |acc, x| acc + x.1.protein) + self.world.resources.free_protein + self.world.resources.oxygen + self.world.resources.carbon;
+    	// let all_protein = self.world.bots.iter().fold(0, |acc, x| acc + x.1.protein) + self.world.resources.free_protein + self.world.resources.oxygen + self.world.resources.carbon;
 
-    	info!("bots: {:5}, all: {:5}, free_protein: {:5}, oxygen: {:5}, carbon: {:5}", 
+
+
+    	/*info!("bots: {:5}, all: {:5}, free_protein: {:5}, oxygen: {:5}, carbon: {:5}", 
     		self.world.bots.len(),
     		all_protein,
     		self.world.resources.free_protein,
     		self.world.resources.oxygen,
     		self.world.resources.carbon
-    	);
-    	self.simulate_performance.end(100, "simulate");
+    	);*/
+    	if self.simulate_performance.end(100, "simulate") {
+    		info!("    bots: {}", self.world.bots.len());
+    	}
     }
 
     fn draw(&mut self) {
@@ -716,7 +728,7 @@ impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
     }
 
     fn char_event(&mut self, character: char, _keymods: KeyMods, _repeat: bool) {
-    	// info!("char: {}", character);
+    	// // // info!("char: {}", character);
     }
 }
 
@@ -733,7 +745,7 @@ impl log::Log for ConsoleLogger {
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
-            info!("{} - {}", record.level(), record.args());
+            // info!("{} - {}", record.level(), record.args());
         }
     }
 
@@ -743,8 +755,8 @@ impl log::Log for ConsoleLogger {
 fn main() {
 	let rng = Pcg32::from_seed(SEED);
 	let camera = ImageCamera {
-		offset: Vec2i { x: 0, y: 0 },
-		scale: 3,
+		offset: START_CAM_OFFSET,
+		scale: START_CAM_SCALE,
 	};
 	let repeated_camera = RepeatedImageCamera {
 		cam: camera.clone(),
@@ -800,13 +812,16 @@ const MOORE_NEIGHBORHOOD: [Vec2i; 8] = [
 ];
 
 
-const BOTS_COUNT_START: u32 = 30;
-const WORLD_SIZE: Vec2i = Vec2i { x: 100, y: 100 };
-const FREE_PROTEIN_START: u32 = 300;
-const OXYGEN_START: u32 = 100;
-const CARBON_START: u32 = 100;
+const BOTS_COUNT_START: u32 = 2000;
+const WORLD_SIZE: Vec2i = Vec2i { x: 300, y: 300 };
+const FREE_PROTEIN_START: u32 = 3000;
+const OXYGEN_START: u32 = 1000;
+const CARBON_START: u32 = 1000;
 const DIE_TIME: u32 = 320;
-const MAX_COMMANDS_PER_STEP: usize = 5;
+const START_CAM_SCALE: u8 = 2;
+const START_CAM_OFFSET: Vec2i = Vec2i { x: 0, y: 0 };
+const LIVE_START_TIME: u32 = 160;
+const MAX_COMMANDS_PER_STEP: usize = 3;
 const MULTIPLY_PROTEIN: u32 = 4;
-const PROGRAM_SIZE: usize = 15;
+const PROGRAM_SIZE: usize = 10;
 const SEED: [u8; 16] = [61, 84, 54, 33, 20, 21, 2, 3, 22, 54, 27, 36, 80, 81, 96, 96];
