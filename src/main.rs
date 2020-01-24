@@ -591,8 +591,8 @@ impl PerformanceMeasurer {
 		1.0 / (bufdraw::now() - self.current_time)
 	}
 
-	fn end(&mut self, trigger_count: usize, name: &str) -> bool {
-		self.counter += 1;
+	fn end(&mut self, trigger_count: usize, name: &str, actions: usize) -> bool {
+		self.counter += actions;
 		self.total_time += bufdraw::now() - self.current_time;
 		if self.counter % trigger_count == 0 {
 			let average_time = self.total_time / self.counter as f64;
@@ -671,9 +671,9 @@ impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
     		self.world.resources.oxygen,
     		self.world.resources.carbon
     	);*/
-    	if self.simulate_performance.end(100, "simulate") {
+    	if self.simulate_performance.end(100, "simulate", counter) {
     		info!("    bots: {}", self.world.bots.len());
-    		info!("steps per second: {}", counter);
+    		info!("steps per frame: {}", counter);
     	}
     }
 
@@ -689,7 +689,7 @@ impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
 				1.0, 
 			));
         }
-        self.draw_performance.end(100, "    draw");
+        self.draw_performance.end(100, "    draw", 1);
     }
 
     fn resize_event(&mut self, new_size: Vec2i) {
