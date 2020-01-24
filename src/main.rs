@@ -569,6 +569,7 @@ impl Camera for RepeatedImageCamera {
 }
 
 struct PerformanceMeasurer {
+	trigger_counter: usize,
 	counter: usize,
 	total_time: f64,
 	current_time: f64,
@@ -577,6 +578,7 @@ struct PerformanceMeasurer {
 impl PerformanceMeasurer {
 	fn new() -> Self {
 		PerformanceMeasurer {
+			trigger_counter: 0,
 			counter: 0,
 			total_time: 0.0,
 			current_time: bufdraw::now(),
@@ -593,8 +595,9 @@ impl PerformanceMeasurer {
 
 	fn end(&mut self, trigger_count: usize, name: &str, actions: usize) -> bool {
 		self.counter += actions;
+		self.trigger_counter += 1;
 		self.total_time += bufdraw::now() - self.current_time;
-		if self.counter % trigger_count == 0 {
+		if self.trigger_counter % trigger_count == 0 {
 			let average_time = self.total_time / self.counter as f64;
 			let fps = 1.0 / average_time;
 			info!("{}: {:.1} fps", name, fps);
