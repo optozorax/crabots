@@ -1,7 +1,5 @@
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
-use std::hash::BuildHasher;
-use std::hash::Hash;
 
 use bufdraw::vec::Vec2i;
 
@@ -343,13 +341,24 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 		return destruct(resources, &mut bot);
 	}
 
-	if bot.alive {
-		let void_around: Vec<Vec2i> = MOORE_NEIGHBORHOOD.iter().filter(|&offset| 
+	if bot.alive {	
+		let available_cells: Vec<Vec2i> = MOORE_DEPENDENT_NEIGHBORHOOD.iter().filter(|&(_, dependency)| {
+			match dependency {
+				Some((around1, around2)) => 
+					!bots.contains_key(&(around1.clone() + &pos)) && 
+					!bots.contains_key(&(around2.clone() + &pos)),
+				None => true
+			}
+		}
+		).map(|(offset, _)| offset.clone()).collect();
+
+		let void_around: Vec<Vec2i> = available_cells.iter().filter(|&offset| 
 			!bots.contains_key(&(offset.clone() + &pos))
 		).map(|offset| offset.clone() + &pos).collect();
-		let alive_around: Vec<Vec2i> = MOORE_NEIGHBORHOOD.iter().filter(|&offset| 
+
+		let alive_around: Vec<Vec2i> = available_cells.iter().filter(|&offset| 
 			if let Some(around) = bots.get(&(offset.clone() + &pos)) { 
-				around.alive 
+				around.alive
 			} else { 
 				false 
 			}
@@ -450,7 +459,8 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 				},
 			}
 		}
-		return destruct(resources, &mut bot);
+		//return destruct(resources, &mut bot);
+		return Some((pos, bot))
 	} else {
 		// Действия после смерти
 		bot.color = bot.color.interpolate(&colors::BLACK, 0.005);
@@ -652,7 +662,7 @@ impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
     fn update(&mut self) {
     	self.simulate_performance.start();
     	let mut counter = 0;
-    	while self.simulate_performance.check_fps() > 40.0 {
+    	while self.simulate_performance.check_fps() > 60.0 {
     		process_world(&mut self.rng, &mut self.world);
     		counter += 1;
     	}
@@ -815,6 +825,18 @@ mod colors {
 	};
 }
 
+const MOORE_DEPENDENT_NEIGHBORHOOD: [(Vec2i, Option<(Vec2i, Vec2i)>); 8] = [
+	(Vec2i { x: -1, y: 0 },  None),
+	(Vec2i { x: 1, y: 0 },   None),
+	(Vec2i { x: 0, y: -1 },  None),
+	(Vec2i { x: 0, y: 1 }, None),
+
+	(Vec2i { x: -1, y: 1 },  Some((Vec2i { x: -1, y: 0 }, Vec2i { x: 0, y: 1 }))),
+	(Vec2i { x: 1, y: 1 },   Some((Vec2i { x: 1, y: 0 },  Vec2i { x: 0, y: 1 }))),
+	(Vec2i { x: 1, y: -1 },  Some((Vec2i { x: 1, y: 0 },  Vec2i { x: 0, y: -1 }))),
+	(Vec2i { x: -1, y: -1 }, Some((Vec2i { x: -1, y: 0 }, Vec2i { x: 0, y: -1 }))),
+];
+
 const MOORE_NEIGHBORHOOD: [Vec2i; 8] = [
 	Vec2i { x: -1, y:  1 },
 	Vec2i { x:  0, y:  1 },
@@ -836,7 +858,7 @@ const DIE_TIME: u32 = 320;
 const START_CAM_SCALE: u8 = 2;
 const START_CAM_OFFSET: Vec2i = Vec2i { x: 0, y: 0 };
 const LIVE_START_TIME: u32 = 160;
-const MAX_COMMANDS_PER_STEP: usize = 3;
+const MAX_COMMANDS_PER_STEP: usize = 2;
 const MULTIPLY_PROTEIN: u32 = 4;
-const PROGRAM_SIZE: usize = 10;
+const PROGRAM_SIZE: usize = 5;
 const SEED: [u8; 16] = [61, 84, 54, 33, 20, 21, 2, 3, 22, 54, 27, 36, 80, 81, 96, 96];
