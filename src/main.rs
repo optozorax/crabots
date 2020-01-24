@@ -587,6 +587,10 @@ impl PerformanceMeasurer {
 		self.current_time = bufdraw::now();
 	}
 
+	fn check_fps(&mut self) -> f64 {
+		1.0 / (bufdraw::now() - self.current_time)
+	}
+
 	fn end(&mut self, trigger_count: usize, name: &str) -> bool {
 		self.counter += 1;
 		self.total_time += bufdraw::now() - self.current_time;
@@ -644,8 +648,10 @@ impl<R: Rng, C: Camera> Window<R, C> {
 impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
     fn update(&mut self) {
     	self.simulate_performance.start();
-    	for _ in 0..10 {
+    	let mut counter = 0;
+    	while self.simulate_performance.check_fps() > 40.0 {
     		process_world(&mut self.rng, &mut self.world);
+    		counter += 1;
     	}
 
     	/*if self.world.resources.free_protein > 30 {
@@ -667,6 +673,7 @@ impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
     	);*/
     	if self.simulate_performance.end(100, "simulate") {
     		info!("    bots: {}", self.world.bots.len());
+    		info!("steps per second: {}", counter);
     	}
     }
 
