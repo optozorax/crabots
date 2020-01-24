@@ -232,21 +232,28 @@ impl Interpolate for Color {
 	}	
 }
 
-trait Push {
-	type Key;
-	type Value;
+use std::collections::hash_map::Entry;
 
-	fn push(&mut self, key: Self::Key, value: Self::Value);
-}
+fn insert_random_bot<R: Rng + ?Sized>(mut rng: &mut R, world: &mut World) -> bool {
+	let mut bot = Bot::make_random(&mut rng);
+	let mut bot_pos = Vec2i {
+		x: rng.gen(),
+		y: rng.gen(),
+	};
+	bot.timer = 160 + rng.gen_range(0, 160);
+	bot.protein = 30;
+	bot_pos = normalize_coords(bot_pos, &world.size);
 
-impl<K: Hash + Eq, V, S: BuildHasher> Push for HashMap<K, Vec<V>, S> {
-	type Key = K;
-	type Value = V;
-
-	fn push(&mut self, key: Self::Key, value: Self::Value) {
-		self.entry(key).or_insert(Vec::with_capacity(2)).push(value); 
-	}
-}
+	match world.bots.entry(bot_pos) {
+	    Entry::Occupied(_) => {
+	    	return false
+	    },
+	    Entry::Vacant(v) => {
+	    	v.insert(bot); 
+	    	return true;
+	    }
+	};
+} 
 
 fn init_world<R: Rng + ?Sized>(mut rng: &mut R) -> World {
 	let mut world = World {
@@ -262,15 +269,7 @@ fn init_world<R: Rng + ?Sized>(mut rng: &mut R) -> World {
 	};
 
 	for _ in 0..BOTS_COUNT_START {
-		let mut bot = Bot::make_random(&mut rng);
-		let mut bot_pos = Vec2i {
-			x: rng.gen(),
-			y: rng.gen(),
-		};
-		bot.timer = 1600000000;
-		bot.protein = 30;
-		bot_pos = normalize_coords(bot_pos, &world.size);
-		world.bots.entry(bot_pos).or_insert(bot);
+		insert_random_bot(&mut rng, &mut world);		
 	}
 
 	world
@@ -281,10 +280,50 @@ fn process_world<R: Rng + ?Sized>(mut rng: &mut R, world: &mut World) {
 	for pos in positions {
 		let result = process(&mut rng, &mut world.resources, &mut world.bots, pos);
 		if let Some((new_pos, new_bot)) = result {
-			world.bots.insert(new_pos, new_bot);	
+			match world.bots.entry(new_pos) {
+			    Entry::Occupied(_) => {
+			    	world.resources.free_protein += new_bot.protein;
+			    },
+			    Entry::Vacant(v) => {
+			    	v.insert(new_bot); 
+			    }
+			};
 		}
 	}
 }
+
+trait Stole {
+	fn can_stole(self) -> bool;
+	fn stole(&mut self, other: &mut Self);
+	fn stole_full(&mut self, other: &mut Self);
+}
+
+impl Stole for u32 {
+	fn can_stole(self) -> bool {
+		self > 0
+	}
+
+	fn stole(&mut self, other: &mut Self) {
+		assert!(other.can_stole());
+		*other -= 1;
+		*self += 1;
+	}
+
+	fn stole_full(&mut self, other: &mut Self) {
+		*self += *other;
+		*other = 0;
+	}
+}
+
+impl Drop for Bot {
+    fn drop(&mut self) {
+    	if self.protein > 0 && self.protein != 30 {
+    		info!("Dropping bot, protein: {:5}", self.protein);
+    		panic!();
+    	}
+    }
+}
+
 
 fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut HashMap<Vec2i, Bot>, pos: Vec2i) -> Option<(Vec2i, Bot)> {
 	let mut bot = bots.remove(&pos)?;
@@ -296,14 +335,12 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 		bot.color = bot.color.interpolate(&colors::BLACK, 0.5);
 		bot.alive = false;
 		bot.timer = DIE_TIME;
-		//println!("Die occured!");
+		info!("Die occured!");
 	}
 
 	// Полное уничтожение
 	if !bot.alive && bot.timer <= 0 {
-	// 1println!("Destruction occured!");
-		resources.free_protein += bot.protein;
-		return None;
+		return destruct(resources, &mut bot);
 	}
 
 	if bot.alive {
@@ -324,7 +361,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 			if bot.protein >= 10 * MULTIPLY_PROTEIN {
 				let result = multiply(rng, &mut bot, &void_around);
 				if let Some((new_pos, new_bot)) = result {
-				// 1println!("Multiply protein occured! {} {}", bot.protein, new_bot.protein);
+					info!("Multiply protein occured! {} {}", bot.protein, new_bot.protein);
 					bots.insert(new_pos, new_bot);
 				}
 				return Some((pos, bot));
@@ -335,12 +372,12 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 			let comand = bot.program[bot.eip.0].clone();
 			match comand.comand {
 				Multiply => {
-					let result = multiply(rng, &mut bot, &void_around);
 					if bot.protein >= MULTIPLY_PROTEIN {
+						let result = multiply(rng, &mut bot, &void_around);
 						if let Some((new_pos, mut new_bot)) = result {
 							new_bot.eip = ProgramPos(0);
 							bot.eip = comand.goto_success;
-						// 1println!("Multiply occured! {} {}", bot.protein, new_bot.protein);
+							info!("Multiply occured! {} {}", bot.protein, new_bot.protein);
 							bots.insert(new_pos, new_bot);
 							return Some((pos, bot));
 						} else {
@@ -351,37 +388,32 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 					}
 				},
 				Photosynthesis => {
-					if resources.free_protein > 0 && resources.carbon > 0 {
-						resources.free_protein -= 1;
-						bot.protein += 1;
-
-						resources.carbon -= 1;
-						resources.oxygen += 1;
+					if resources.free_protein.can_stole() && resources.carbon.can_stole() {
+						bot.protein.stole(&mut resources.free_protein);
+						resources.oxygen.stole(&mut resources.carbon);
 
 						bot.color = bot.color.interpolate(&colors::GREEN, 0.03);
 						bot.eip = comand.goto_success;
-					// 1println!("Photosynthesis occured!");
+						info!("Photosynthesis occured!");
 						return Some((pos, bot));
 					} else {
 						bot.eip = comand.goto_fail;
 					}
 				},
 				Attack => {
-					if alive_around.len() > 0 && resources.oxygen > 0 {
+					if alive_around.len() > 0 && resources.oxygen.can_stole() {
 						let attack_to = alive_around.choose(rng).unwrap();
 
 						if let Some(mut attacked) = bots.remove(attack_to) {
-							if attacked.protein > 0 {
-								attacked.protein -= 1;
-								bot.protein += 1;
-								resources.oxygen -= 1;
-								resources.carbon += 1;
+							if attacked.protein.can_stole() {
+								bot.protein.stole(&mut attacked.protein);
+								resources.carbon.stole(&mut resources.oxygen);
 
 								bots.insert(attack_to.clone(), attacked);
 
 								bot.color = bot.color.interpolate(&colors::RED, 0.03);
 								bot.eip = comand.goto_success;
-							// 1println!("Attack occured!");
+								info!("Attack occured!");
 								return Some((pos, bot));	
 							} else {
 								bot.eip = comand.goto_fail;
@@ -394,13 +426,12 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 					}
 				},
 				Food => {
-					if resources.free_protein > 0 {
-						resources.free_protein -= 1;
-						bot.protein += 1;
+					if resources.free_protein.can_stole() {
+						bot.protein.stole(&mut resources.free_protein);
 
 						bot.color = bot.color.interpolate(&colors::GRAY, 0.03);
 						bot.timer = bot.timer.saturating_sub(10);
-					// 1println!("Food occured!");
+						info!("Food occured!");
 						return Some((pos, bot));
 					} else {
 						bot.eip = comand.goto_fail;
@@ -410,7 +441,7 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 					if void_around.len() > 0 {
 						let new_pos = void_around.choose(rng).unwrap();
 						bot.color = bot.color.interpolate(&colors::WHITE, 0.001);
-						//println!("Move occured!");
+						//info!("Move occured!");
 						bot.eip = comand.goto_success;
 						return Some((new_pos.clone(), bot));
 					} else {
@@ -419,15 +450,14 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 				},
 			}
 		}
-		return None;
+		return destruct(resources, &mut bot);
 	} else {
 		// Действия после смерти
 		bot.color = bot.color.interpolate(&colors::BLACK, 1.0 / DIE_TIME as f64);
-		if bot.protein > 1 {
-			bot.protein -= 1;
-			resources.free_protein += 1;
+		if bot.protein.can_stole() {
+			resources.free_protein.stole(&mut bot.protein);
 		}
-		//println!("After die occured!");
+		//info!("After die occured!");
 		return Some((pos, bot));
 	}
 
@@ -437,7 +467,14 @@ fn process<R: Rng + ?Sized>(rng: &mut R, resources: &mut Resources, bots: &mut H
 		new_bot.mutate(rng);
 		new_bot.protein /= 2;
 		bot.protein -= new_bot.protein;
+		new_bot.eip = ProgramPos(0);
 		Some((new_pos.clone(), new_bot))
+	}
+
+	fn destruct(resources: &mut Resources, bot: &mut Bot) -> Option<(Vec2i, Bot)> {
+		info!("Destruction occured!");
+		resources.free_protein.stole_full(&mut bot.protein);
+		return None;
 	}
 }
 
@@ -526,22 +563,21 @@ impl PerformanceMeasurer {
 	}
 
 	fn start(&mut self) {
-		self.counter += 1;
 		self.current_time = bufdraw::now();
 	}
 
-	fn end(&mut self, trigger_count: usize, name: &str, mul: usize, div: usize) {
+	fn end(&mut self, trigger_count: usize, name: &str) {
+		self.counter += 1;
 		self.total_time += bufdraw::now() - self.current_time;
 		if self.counter % trigger_count == 0 {
 			let average_time = self.total_time / self.counter as f64;
 			let fps = 1.0 / average_time;
-			let normalized_fps = fps / div as f64 * mul as f64;
-			info!("{} performance: avg = {:?}, {:.1} fps, normalized_fps: {:.1}", name, average_time, fps, normalized_fps);
+			info!("{}: {:.1} fps", name, fps);
 		}
 	}
 }
 
-use log::{info, LevelFilter};
+use log::info;
 
 use bufdraw::*;
 use bufdraw::image::*;
@@ -585,7 +621,23 @@ impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
     fn update(&mut self) {
     	self.simulate_performance.start();
     	process_world(&mut self.rng, &mut self.world);
-    	self.simulate_performance.end(100, "simulate", 1, 1);
+
+    	/*if self.world.resources.free_protein > 30 {
+    		if insert_random_bot(&mut self.rng, &mut self.world) {
+    			self.world.resources.free_protein -= 30;
+    		}
+    	}*/
+
+    	let all_protein = self.world.bots.iter().fold(0, |acc, x| acc + x.1.protein) + self.world.resources.free_protein + self.world.resources.oxygen + self.world.resources.carbon;
+
+    	info!("bots: {:5}, all: {:5}, free_protein: {:5}, oxygen: {:5}, carbon: {:5}", 
+    		self.world.bots.len(),
+    		all_protein,
+    		self.world.resources.free_protein,
+    		self.world.resources.oxygen,
+    		self.world.resources.carbon
+    	);
+    	self.simulate_performance.end(100, "simulate");
     }
 
     fn draw(&mut self) {
@@ -613,7 +665,7 @@ impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
 			cache = Some((pos, result.clone()));
 			return result
         });
-        self.draw_performance.end(100, "draw", self.image.width * self.image.height, 500 * 500);
+        self.draw_performance.end(100, "    draw");
     }
 
     fn resize_event(&mut self, new_size: Vec2i) {
@@ -664,7 +716,7 @@ impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
     }
 
     fn char_event(&mut self, character: char, _keymods: KeyMods, _repeat: bool) {
-    	info!("char: {}", character);
+    	// info!("char: {}", character);
     }
 }
 
@@ -681,7 +733,7 @@ impl log::Log for ConsoleLogger {
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
-            println!("{} - {}", record.level(), record.args());
+            info!("{} - {}", record.level(), record.args());
         }
     }
 
@@ -748,13 +800,13 @@ const MOORE_NEIGHBORHOOD: [Vec2i; 8] = [
 ];
 
 
-const BOTS_COUNT_START: u32 = 400;
+const BOTS_COUNT_START: u32 = 30;
 const WORLD_SIZE: Vec2i = Vec2i { x: 100, y: 100 };
 const FREE_PROTEIN_START: u32 = 300;
 const OXYGEN_START: u32 = 100;
 const CARBON_START: u32 = 100;
 const DIE_TIME: u32 = 320;
-const MAX_COMMANDS_PER_STEP: usize = 3;
+const MAX_COMMANDS_PER_STEP: usize = 5;
 const MULTIPLY_PROTEIN: u32 = 4;
 const PROGRAM_SIZE: usize = 15;
 const SEED: [u8; 16] = [61, 84, 54, 33, 20, 21, 2, 3, 22, 54, 27, 36, 80, 81, 96, 96];
