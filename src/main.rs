@@ -489,6 +489,8 @@ struct ImageCamera {
 
 trait Camera {
 	fn to(&self, pos: Vec2i) -> Vec2i;
+	fn from(&self, pos: Vec2i) -> Vec2i;
+	fn from_dir(&self, dir: Vec2i) -> Vec2i;
 	fn offset(&mut self, offset: &Vec2i);
 	fn scale(&mut self, mouse_pos: &Vec2i, add_to_scale: i8);
 }
@@ -503,6 +505,14 @@ impl Camera for ImageCamera {
 		pos
 	}
 
+	fn from(&self, pos: Vec2i) -> Vec2i {
+		pos * (self.scale.into()) + &self.offset
+	}
+
+	fn from_dir(&self, dir: Vec2i) -> Vec2i {
+		dir * (self.scale.into())	
+	}
+
 	fn offset(&mut self, offset: &Vec2i) {
 		self.offset += offset.clone();
 	}
@@ -514,7 +524,7 @@ impl Camera for ImageCamera {
 		let new_scale = (self.scale as i8 + add_to_scale) as u8;
 		self.offset = (self.offset.clone() - mouse_pos) * new_scale as i32 / self.scale as i32 + mouse_pos;
 		self.scale = new_scale;
-	}	
+	}
 }
 
 #[derive(Clone)]
@@ -539,6 +549,14 @@ impl Camera for RepeatedImageCamera {
 				size - ((-x) % size)
 			}
 		}
+	}
+
+	fn from(&self, pos: Vec2i) -> Vec2i {
+		self.cam.from(pos)
+	}
+
+	fn from_dir(&self, dir: Vec2i) -> Vec2i {
+		self.cam.from_dir(dir)
 	}
 
 	fn offset(&mut self, offset: &Vec2i) {
@@ -654,29 +672,16 @@ impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
 
     fn draw(&mut self) {
     	self.draw_performance.start();
-    	let bots = &self.world.bots;
-    	let cam = &self.cam;
-    	let mut cache: Option<(Vec2i, bufdraw::image::Color)> = None;
-        function_for_all_pixels(&mut self.image, move |x, y| {
-        	let pos = cam.to((x, y).into());
-        	if let Some((cached_pos, color)) = &cache {
-        		if cached_pos == &pos {
-        			return color.clone()
-        		}
-        	}
-        	let result = if let Some(bot) = bots.get(&pos) {
-				bufdraw::image::Color::rgba(
-					(bot.color.r.0 * 255.0) as u8, 
-					(bot.color.g.0 * 255.0) as u8, 
-					(bot.color.b.0 * 255.0) as u8, 
-					255, 
-				)
-			} else {
-				bufdraw::image::Color::rgba(0, 0, 0, 255)
-			};
-			cache = Some((pos, result.clone()));
-			return result
-        });
+        self.image.clear(&bufdraw::image::Color::gray(0));
+        let cam = &self.cam;
+        for (pos, bot) in &self.world.bots {
+        	rect(&mut self.image, &cam.from(pos.clone()), &cam.from_dir(Vec2i::new(1, 1)), &bufdraw::image::Color::rgba_f64(
+				bot.color.r.0, 
+				bot.color.g.0, 
+				bot.color.b.0, 
+				1.0, 
+			));
+        }
         self.draw_performance.end(100, "    draw");
     }
 
