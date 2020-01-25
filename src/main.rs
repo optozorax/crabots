@@ -740,8 +740,19 @@ impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
     	}
     }
 
-    fn mouse_wheel_event(&mut self, pos: Vec2i, _dir: MouseWheel, _press: bool) {
+    fn mouse_wheel_event(&mut self, pos: Vec2i, dir_vertical: MouseWheelVertical, _dir_horizontal: MouseWheelHorizontal) {
     	self.last_mouse_pos = pos;
+    	match dir_vertical {
+    		MouseWheelVertical::RotateUp => {
+    			self.cam.scale(&self.last_mouse_pos, 1);
+    		},
+    		MouseWheelVertical::RotateDown => {
+    			self.cam.scale(&self.last_mouse_pos, -1);
+    		},
+    		MouseWheelVertical::Nothing => {
+
+    		}
+    	}
     }
 
     fn key_event(&mut self, keycode: KeyCode, _keymods: KeyMods, state: ButtonState) {
