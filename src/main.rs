@@ -623,7 +623,7 @@ struct Window<R: Rng, C: Camera> {
 
 impl<R: Rng, C: Camera> Window<R, C> {
     fn new(mut rng: R, cam: C) -> Self {
-    	let font_data = include_bytes!("WenQuanYiMicroHei.ttf");
+    	let font_data = include_bytes!("Anonymous.ttf");
         Window {
             image: Image::new(&Vec2i::new(1920, 1080)),
             world: init_world(&mut rng),
@@ -709,7 +709,7 @@ impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
 	        		perf.tps,
 	        		perf.steps_per_frame,
 	        	).as_str(), 
-	        	16.0, 
+	        	15.0, 
 	        	&Vec2i::new(5, 5), 
 	        	&bufdraw::image::Color::rgba(255, 255, 255, 190)
 	        );

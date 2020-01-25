@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 rand = "0.7"
 rand_pcg = "0.2"
-bufdraw = { git = "https://github.com/optozorax/bufdraw", version = "0.1.10" }
+bufdraw = { git = "https://github.com/optozorax/bufdraw", version = "0.1.11" }
 # bufdraw = { path = "../bufdraw" }
 log = "0.4"
 ambassador = "0.2.1"
