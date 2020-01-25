@@ -578,50 +578,12 @@ impl Camera for RepeatedImageCamera {
 	}
 }
 
-struct PerformanceMeasurer {
-	trigger_counter: usize,
-	counter: usize,
-	total_time: f64,
-	current_time: f64,
-}
-
-impl PerformanceMeasurer {
-	fn new() -> Self {
-		PerformanceMeasurer {
-			trigger_counter: 0,
-			counter: 0,
-			total_time: 0.0,
-			current_time: bufdraw::now(),
-		}
-	}
-
-	fn start(&mut self) {
-		self.current_time = bufdraw::now();
-	}
-
-	fn check_fps(&mut self) -> f64 {
-		1.0 / (bufdraw::now() - self.current_time)
-	}
-
-	fn end(&mut self, trigger_count: usize, name: &str, actions: usize) -> bool {
-		self.counter += actions;
-		self.trigger_counter += 1;
-		self.total_time += bufdraw::now() - self.current_time;
-		if self.trigger_counter % trigger_count == 0 {
-			let average_time = self.total_time / self.counter as f64;
-			let fps = 1.0 / average_time;
-			info!("{}: {:.1} fps", name, fps);
-			return true;
-		} else {
-			return false;
-		}
-	}
-}
-
 use log::info;
 
 use bufdraw::*;
 use bufdraw::image::*;
+use bufdraw::measure::*;
+use bufdraw::text::*;
 
 use ambassador::delegatable_trait_remote;
 use ambassador::Delegate;
@@ -633,6 +595,12 @@ pub trait ImageTrait {
     fn get_height(&self) -> usize;
 }
 
+struct PerformanceInfo {
+	tps: usize,
+	steps_per_frame: usize,
+	fps: usize,
+}
+
 #[derive(Delegate)]
 #[delegate(ImageTrait, target = "image")]
 struct Window<R: Rng, C: Camera> {
@@ -642,73 +610,114 @@ struct Window<R: Rng, C: Camera> {
 	rng: R,
 	cam: C,
 
-	draw_performance: PerformanceMeasurer,
-	simulate_performance: PerformanceMeasurer,
+	draw: FpsWithCounter,
+	simulate: FpsWithCounter,
 
 	last_mouse_pos: Vec2i,
 	mouse_move: bool,
+
+	font: Font<'static>,
+
+	performance_info: PerformanceInfo,
 }
 
 impl<R: Rng, C: Camera> Window<R, C> {
     fn new(mut rng: R, cam: C) -> Self {
+    	let font_data = include_bytes!("WenQuanYiMicroHei.ttf");
         Window {
             image: Image::new(&Vec2i::new(1920, 1080)),
             world: init_world(&mut rng),
             rng: rng,
             cam: cam,
-			draw_performance: PerformanceMeasurer::new(),
-			simulate_performance: PerformanceMeasurer::new(),
+			draw: FpsWithCounter::new(100),
+			simulate: FpsWithCounter::new(100),
 			last_mouse_pos: Vec2i::default(),
 			mouse_move: false,
+			font: Font::from_bytes(font_data as &[u8]).expect("Error constructing Font"),
+			performance_info: PerformanceInfo {
+				tps: 0,
+				steps_per_frame: 0,
+				fps: 0,
+			}
         }
     }
 }
 
 impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
     fn update(&mut self) {
-    	self.simulate_performance.start();
     	let mut counter = 0;
-    	while self.simulate_performance.check_fps() > 60.0 {
-    		process_world(&mut self.rng, &mut self.world);
-    		counter += 1;
-    	}
+    	let rng = &mut self.rng;
+    	let world = &mut self.world;
+    	if let Some(d) = self.simulate.action(|clock| {
+	    	while clock.elapsed().fps() > 60.0 {
+	    		process_world(rng, world);
+	    		counter += 1;
+	    	}
+	    }) {
+	    	// let all_resources = self.world.bots.iter().fold(0, |acc, x| acc + x.1.protein) + self.world.resources.free_protein + self.world.resources.oxygen + self.world.resources.carbon;
 
-    	/*if self.world.resources.free_protein > 30 {
-    		if insert_random_bot(&mut self.rng, &mut self.world) {
-    			self.world.resources.free_protein -= 30;
-    		}
-    	}*/
-
-    	// let all_protein = self.world.bots.iter().fold(0, |acc, x| acc + x.1.protein) + self.world.resources.free_protein + self.world.resources.oxygen + self.world.resources.carbon;
-
-
-
-    	/*info!("bots: {:5}, all: {:5}, free_protein: {:5}, oxygen: {:5}, carbon: {:5}", 
-    		self.world.bots.len(),
-    		all_protein,
-    		self.world.resources.free_protein,
-    		self.world.resources.oxygen,
-    		self.world.resources.carbon
-    	);*/
-    	if self.simulate_performance.end(100, "simulate", counter) {
-    		info!("    bots: {}", self.world.bots.len());
-    		info!("steps per frame: {}", counter);
-    	}
+	    	/*info!("bots: {:5}, all: {:5}, free_protein: {:5}, oxygen: {:5}, carbon: {:5}", 
+	    		self.world.bots.len(),
+	    		all_protein,
+	    		self.world.resources.free_protein,
+	    		self.world.resources.oxygen,
+	    		self.world.resources.carbon
+	    	);*/
+	    	self.performance_info.tps = d.fps() as usize * counter;
+	    	self.performance_info.steps_per_frame = counter;
+	    	//info!("{:>20}: {:.1} tps", "simulate", d.fps());
+    		//info!("{:>20}: {}", "bots", self.world.bots.len());
+    		//info!("{:>20}: {}", "steps per frame", counter);
+	    }
     }
 
     fn draw(&mut self) {
-    	self.draw_performance.start();
-        self.image.clear(&bufdraw::image::Color::gray(0));
-        let cam = &self.cam;
-        for (pos, bot) in &self.world.bots {
-        	rect(&mut self.image, &cam.from(pos.clone()), &cam.from_dir(Vec2i::new(1, 1)), &bufdraw::image::Color::rgba_f64(
-				bot.color.r.0, 
-				bot.color.g.0, 
-				bot.color.b.0, 
-				1.0, 
-			));
-        }
-        self.draw_performance.end(100, "    draw", 1);
+    	let world = &self.world;
+    	let image = &mut self.image;
+    	let cam = &self.cam;
+    	let font = &self.font;
+    	let perf = &self.performance_info;
+    	if let Some(d) = self.draw.action(|_| {
+	        image.clear(&bufdraw::image::Color::gray(0));
+	        for (pos, bot) in &world.bots {
+	        	rect(image, &cam.from(pos.clone()), &cam.from_dir(Vec2i::new(1, 1)), &bufdraw::image::Color::rgba_f64(
+					bot.color.r.0, 
+					bot.color.g.0, 
+					bot.color.b.0, 
+					1.0, 
+				));
+	        }
+	        draw_text(
+	        	image, 
+	        	font, 
+	        	format!(
+	        		"\
+	        		bots: {}\n\
+	        		protein: {}\n\
+	        		oxygen: {}\n\
+	        		carbon: {}\n\
+	        		\n\
+	        		fps: {}\n\
+	        		tps: {}\n\
+	        		steps per frame: {}\n\
+	        		",
+	        		world.bots.len(),
+	        		world.resources.free_protein, 
+	        		world.resources.oxygen, 
+	        		world.resources.carbon,
+	        		perf.fps,
+	        		perf.tps,
+	        		perf.steps_per_frame,
+	        	).as_str(), 
+	        	16.0, 
+	        	&Vec2i::new(5, 5), 
+	        	&bufdraw::image::Color::rgba(255, 255, 255, 190)
+	        );
+	    }) {
+	    	self.performance_info.fps = d.fps() as usize;
+    		//info!("{:>20}: {:.1} fps", "draw", d.fps());
+    		//info!("{:->40}", "");
+	    }
     }
 
     fn resize_event(&mut self, new_size: Vec2i) {
