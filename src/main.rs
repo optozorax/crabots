@@ -502,7 +502,8 @@ trait Camera {
 	fn from(&self, pos: Vec2i) -> Vec2i;
 	fn from_dir(&self, dir: Vec2i) -> Vec2i;
 	fn offset(&mut self, offset: &Vec2i);
-	fn scale(&mut self, mouse_pos: &Vec2i, add_to_scale: i8);
+	fn scale_cam(&mut self, mouse_pos: &Vec2i, add_to_scale: i8);
+	fn get_scale(&self) -> u8;
 }
 
 impl Camera for ImageCamera {
@@ -527,13 +528,17 @@ impl Camera for ImageCamera {
 		self.offset += offset.clone();
 	}
 
-	fn scale(&mut self, mouse_pos: &Vec2i, add_to_scale: i8) {
+	fn scale_cam(&mut self, mouse_pos: &Vec2i, add_to_scale: i8) {
 		if self.scale == 1 && add_to_scale < 0 { return; }
 		if self.scale == 128 && add_to_scale > 0 { return; }
 
 		let new_scale = (self.scale as i8 + add_to_scale) as u8;
 		self.offset = (self.offset.clone() - mouse_pos) * new_scale as i32 / self.scale as i32 + mouse_pos;
 		self.scale = new_scale;
+	}
+
+	fn get_scale(&self) -> u8 {
+		self.scale
 	}
 }
 
@@ -573,8 +578,12 @@ impl Camera for RepeatedImageCamera {
 		self.cam.offset(offset);
 	}
 
-	fn scale(&mut self, mouse_pos: &Vec2i, add_to_scale: i8) {
-		self.cam.scale(mouse_pos, add_to_scale);
+	fn scale_cam(&mut self, mouse_pos: &Vec2i, add_to_scale: i8) {
+		self.cam.scale_cam(mouse_pos, add_to_scale);
+	}
+
+	fn get_scale(&self) -> u8 {
+		self.cam.get_scale()
 	}
 }
 
@@ -615,6 +624,7 @@ struct Window<R: Rng, C: Camera> {
 
 	last_mouse_pos: Vec2i,
 	mouse_move: bool,
+	current_cam_scale: u8,
 
 	font: Font<'static>,
 
@@ -633,6 +643,7 @@ impl<R: Rng, C: Camera> Window<R, C> {
 			simulate: FpsWithCounter::new(100),
 			last_mouse_pos: Vec2i::default(),
 			mouse_move: false,
+			current_cam_scale: 0,
 			font: Font::from_bytes(font_data as &[u8]).expect("Error constructing Font"),
 			performance_info: PerformanceInfo {
 				tps: 0,
@@ -731,6 +742,25 @@ impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
     	self.last_mouse_pos = pos;
     }
 
+    fn touch_three_move(&mut self, pos: &Vec2i, offset: &Vec2i) {
+        self.cam.offset(offset);
+    }
+
+    fn touch_one_move(&mut self, pos: &Vec2i, offset: &Vec2i) {
+        self.cam.offset(offset);
+    }
+
+    fn touch_scale_start(&mut self, _pos: &Vec2i) {
+        self.current_cam_scale = self.cam.get_scale();
+    }
+    fn touch_scale_change(&mut self, scale: f32, pos: &Vec2i, offset: &Vec2i) {
+    	self.cam.offset(offset);
+    	let current_scale = (self.current_cam_scale as f32 * scale) as u8;
+    	if current_scale != self.cam.get_scale() && current_scale != 0 {
+    		self.cam.scale_cam(pos, (current_scale - self.cam.get_scale()) as i8);
+    	}
+    }
+
     fn mouse_button_event(&mut self, button: MouseButton, state: ButtonState, pos: Vec2i) {
     	self.last_mouse_pos = pos;
     	use MouseButton::*;
@@ -753,10 +783,10 @@ impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
     	self.last_mouse_pos = pos;
     	match dir_vertical {
     		MouseWheelVertical::RotateUp => {
-    			self.cam.scale(&self.last_mouse_pos, 1);
+    			self.cam.scale_cam(&self.last_mouse_pos, 1);
     		},
     		MouseWheelVertical::RotateDown => {
-    			self.cam.scale(&self.last_mouse_pos, -1);
+    			self.cam.scale_cam(&self.last_mouse_pos, -1);
     		},
     		MouseWheelVertical::Nothing => {
 
@@ -768,10 +798,10 @@ impl<R: Rng, C: Camera> MyEvents for Window<R, C> {
     	if let bufdraw::ButtonState::Down = state {
 	    	match keycode {
 	    		KeyCode::A => {
-	    			self.cam.scale(&self.last_mouse_pos, 1);
+	    			self.cam.scale_cam(&self.last_mouse_pos, 1);
 	    		},
 	    		KeyCode::D => {
-	    			self.cam.scale(&self.last_mouse_pos, -1);
+	    			self.cam.scale_cam(&self.last_mouse_pos, -1);
 	    		},
 	    		_ => {},
 	    	}
