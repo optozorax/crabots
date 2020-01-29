@@ -882,15 +882,15 @@ mod colors {
 }
 
 const MOORE_DEPENDENT_NEIGHBORHOOD: [(Vec2i, Option<(Vec2i, Vec2i)>); 8] = [
-	(Vec2i { x: -1, y: 0 },  None),
-	(Vec2i { x: 1, y: 0 },   None),
-	(Vec2i { x: 0, y: -1 },  None),
-	(Vec2i { x: 0, y: 1 }, None),
+	(Vec2i { x: -1, y:  0 },  None),
+	(Vec2i { x:  1, y:  0 },  None),
+	(Vec2i { x:  0, y: -1 },  None),
+	(Vec2i { x:  0, y:  1 },  None),
 
-	(Vec2i { x: -1, y: 1 },  Some((Vec2i { x: -1, y: 0 }, Vec2i { x: 0, y: 1 }))),
-	(Vec2i { x: 1, y: 1 },   Some((Vec2i { x: 1, y: 0 },  Vec2i { x: 0, y: 1 }))),
-	(Vec2i { x: 1, y: -1 },  Some((Vec2i { x: 1, y: 0 },  Vec2i { x: 0, y: -1 }))),
-	(Vec2i { x: -1, y: -1 }, Some((Vec2i { x: -1, y: 0 }, Vec2i { x: 0, y: -1 }))),
+	(Vec2i { x: -1, y:  1 },  Some((Vec2i { x: -1, y: 0 },  Vec2i { x: 0, y:  1 }))),
+	(Vec2i { x:  1, y:  1 },  Some((Vec2i { x:  1, y: 0 },  Vec2i { x: 0, y:  1 }))),
+	(Vec2i { x:  1, y: -1 },  Some((Vec2i { x:  1, y: 0 },  Vec2i { x: 0, y: -1 }))),
+	(Vec2i { x: -1, y: -1 },  Some((Vec2i { x: -1, y: 0 },  Vec2i { x: 0, y: -1 }))),
 ];
 
 const MOORE_NEIGHBORHOOD: [Vec2i; 8] = [
