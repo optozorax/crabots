@@ -1,0 +1,12 @@
+#!/bin/bash
+
+cp -R www www_$1
+cargo build --target wasm32-unknown-unknown --release
+cp target/wasm32-unknown-unknown/release/crabots.wasm www_$1/target.wasm
+wasm-strip www_$1/target.wasm
+
+git checkout gh-pages
+git add www_$1 www_$1/target.wasm --force
+git commit -m "add crabots version \"$1\" to gh-pages"
+git push
+git checkout master
