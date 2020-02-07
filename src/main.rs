@@ -718,6 +718,7 @@ impl<R: Rng, C: Camera, G: Grid<Bot>> MyEvents for Window<R, C, G> {
         self.image.resize_lazy(&new_size);
         if self.cam.to(Vec2i::default()) == Vec2i::default() {
         	self.cam.offset(&((new_size - &(WORLD_SIZE * START_CAM_SCALE as i32)) / 2));
+		self.fps.clear();
         }
     }
 

@@ -1,5 +1,5 @@
 #!/bin/bash
 
 cargo build --target wasm32-unknown-unknown --release
-cp target/wasm32-unknown-unknown/release/examples/crabots.wasm www/target.wasm
+cp target/wasm32-unknown-unknown/release/crabots.wasm www/target.wasm
 wasm-strip www/target.wasm
