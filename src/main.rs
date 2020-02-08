@@ -673,8 +673,10 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 	fn touch_scale_change(&mut self, scale: f32, pos: &Vec2i, offset: &Vec2i) {
 		let pos = pos.clone() / self.constants.image_scale as i32;
 		let offset = offset.clone() / self.constants.image_scale as i32;
+
+    	let current_scale = (self.current_cam_scale as f32 * scale / self.constants.image_scale as f32) as u8;
 		self.cam.offset(&offset);
-		self.cam.scale_new(&pos, self.current_cam_scale * scale / self.constants.image_scale as f32);
+    	self.cam.scale_new(&pos, current_scale as f32);
 	}
 
 	fn mouse_button_event(&mut self, button: MouseButton, state: ButtonState, mut pos: Vec2i) {
