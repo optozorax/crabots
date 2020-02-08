@@ -1,13 +1,19 @@
 [package]
 name = "crabots"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Ilya Sheprut <optozorax@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 rand = "0.7"
 rand_pcg = "0.2"
-bufdraw = { git = "https://github.com/optozorax/bufdraw", version = "0.1.15" }
+bufdraw = { git = "https://github.com/optozorax/bufdraw", version = "0.1.16" }
 # bufdraw = { path = "../bufdraw" }
 log = "0.4"
 ambassador = "0.2.1"
+enum-utils = "0.1.2"
+
+[dependencies.clap]
+version = "2.33"
+default-features = false
+features = ["color"]

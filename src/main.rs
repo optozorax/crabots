@@ -3,8 +3,9 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 use rand_pcg::Pcg32;
 
-use ambassador::delegatable_trait_remote;
 use ambassador::Delegate;
+
+use clap::clap_app;
 
 use bufdraw::*;
 use bufdraw::image::*;
@@ -16,6 +17,10 @@ use bufdraw::interpolate::Interpolate;
 
 mod gridtools;
 use gridtools::*;
+mod text_window;
+use text_window::*;
+mod camera;
+use crate::camera::*;
 
 #[derive(Clone, Debug)]
 /// Integer from 0 to PROGRAM_SIZE
@@ -74,61 +79,70 @@ trait Stole {
 	fn stole_full(&mut self, other: &mut Self);
 }
 
-#[derive(Clone)]
-struct ImageCamera {
-	offset: Vec2i,
-	scale: u8,
-}
-
-trait Camera {
-	fn to(&self, pos: Vec2i) -> Vec2i;
-	fn from(&self, pos: Vec2i) -> Vec2i;
-	fn from_dir(&self, dir: Vec2i) -> Vec2i;
-	fn offset(&mut self, offset: &Vec2i);
-	fn scale_cam(&mut self, mouse_pos: &Vec2i, add_to_scale: i8);
-	fn get_scale(&self) -> u8;
-}
-
-#[derive(Clone)]
-struct RepeatedImageCamera {
-	cam: ImageCamera,
-	size: Vec2i,
-}
-
-#[delegatable_trait_remote]
-pub trait ImageTrait {
-    fn get_rgba8_buffer(&self) -> &[u8];
-    fn get_width(&self) -> usize;
-    fn get_height(&self) -> usize;
-}
-
 struct PerformanceInfo {
 	tps: usize,
 	steps_per_frame: usize,
 	fps: usize,
 }
 
+#[derive(Clone, enum_utils::FromStr, enum_utils::IterVariants, Debug)]
+enum FieldTopology {
+	Torus,
+	VerticalCylinder,
+	HorizontalCylinder,
+	Infinite,
+}
+
+#[derive(Clone, enum_utils::FromStr, enum_utils::IterVariants, Debug)]
+enum FieldContainer {
+	HashMap,
+	Vec,
+}
+
+struct Constants {
+	width: i32,
+	height: i32,
+	scale: f32,
+	image_scale: u8,
+
+	bots: usize,
+	protein: u32,
+	oxygen: u32,
+	carbon: u32,
+
+	die: u32,
+	live: u32,
+	comand: usize,
+	multiply: u32,
+	seed: u64,
+
+	topology: FieldTopology,
+	container: FieldContainer,
+}
+
 #[derive(Delegate)]
 #[delegate(ImageTrait, target = "image")]
-struct Window<R, C, G> {
-    image: Image,
+struct Window<R, G> {
+	image: Image,
 
-    world: World<G>,
+	world: World<G>,
 	rng: R,
-	cam: C,
+	cam: FloatImageCamera,
 
 	draw: FpsWithCounter,
 	simulate: FpsWithCounter,
 
 	last_mouse_pos: Vec2i,
 	mouse_move: bool,
-	current_cam_scale: u8,
+	current_cam_scale: f32,
 
 	font: Font<'static>,
 
 	performance_info: PerformanceInfo,
 
 	fps: FpsByLastTime,
+
+	constants: Constants,
 }
 
 mod colors {
@@ -177,19 +191,7 @@ mod colors {
 	};
 }
 
-const BOTS_COUNT_START: u32 = 20;
-const WORLD_SIZE: Vec2i = Vec2i { x: 800, y: 100 };
-const FREE_PROTEIN_START: u32 = 30000000;
-const OXYGEN_START: u32 = 10000000;
-const CARBON_START: u32 = 10000000;
-const DIE_TIME: u32 = 320;
-const START_CAM_SCALE: u8 = 3;
-const START_CAM_OFFSET: Vec2i = Vec2i { x: 0, y: 0 };
-const LIVE_START_TIME: u32 = 160;
-const MAX_COMMANDS_PER_STEP: usize = 2;
-const MULTIPLY_PROTEIN: u32 = 4;
 const PROGRAM_SIZE: usize = 5;
-const SEED: [u8; 16] = [61, 84, 54, 33, 20, 21, 2, 3, 22, 54, 27, 36, 80, 81, 96, 96];
 
 //----------------------------------------------------------------------------
 //----------------------------------------------------------------------------
@@ -325,13 +327,13 @@ fn normalize_coords(mut pos: Vec2i, size: &Vec2i) -> Vec2i {
 	pos
 }
 
-fn insert_random_bot<R: Rng + ?Sized, G: Grid<Bot>>(mut rng: &mut R, world: &mut World<G>) -> bool {
+fn insert_random_bot<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, mut rng: &mut R, world: &mut World<G>) -> bool {
 	let mut bot = Bot::make_random(&mut rng);
 	let mut bot_pos = Vec2i {
 		x: rng.gen(),
 		y: rng.gen(),
 	};
-	bot.timer = LIVE_START_TIME;
+	bot.timer = constants.live;
 	bot.protein = 0;
 	bot_pos = normalize_coords(bot_pos, &world.size);
 	if let Some(mut bot) = world.bots.set(&bot_pos, bot) {
@@ -342,10 +344,10 @@ fn insert_random_bot<R: Rng + ?Sized, G: Grid<Bot>>(mut rng: &mut R, world: &mut
 	}
 } 
 
-fn process_world<R: Rng + ?Sized, G: Grid<Bot>>(mut rng: &mut R, world: &mut World<G>) {
+fn process_world<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, mut rng: &mut R, world: &mut World<G>) {
 	let positions: Vec<Vec2i> = world.bots.iter().map(|x| x.0.clone()).collect();
 	for pos in positions {
-		let result = process(&mut rng, &mut world.resources, &mut world.bots, pos);
+		let result = process(&constants, &mut rng, &mut world.resources, &mut world.bots, pos);
 		if let Some((new_pos, new_bot)) = result {
 			if let Some(mut new_bot) = world.bots.set(&new_pos, new_bot) {
 				world.resources.free_protein.stole_full(&mut new_bot.protein);
@@ -372,15 +374,15 @@ impl Stole for u32 {
 }
 
 impl Drop for Bot {
-    fn drop(&mut self) {
-    	if self.protein > 0 && self.protein != 30 {
-    		// info!("Dropping bot, protein: {:5}", self.protein);
-    		//panic!();
-    	}
-    }
+	fn drop(&mut self) {
+		if self.protein > 0 && self.protein != 30 {
+			// info!("Dropping bot, protein: {:5}", self.protein);
+			//panic!();
+		}
+	}
 }
 
-fn process<R: Rng + ?Sized, G: Grid<Bot>>(rng: &mut R, resources: &mut Resources, bots: &mut G, pos: Vec2i) -> Option<(Vec2i, Bot)> {
+fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, resources: &mut Resources, bots: &mut G, pos: Vec2i) -> Option<(Vec2i, Bot)> {
 	let mut bot = bots.get_owned(&pos)?;
 
 	bot.timer = bot.timer.saturating_sub(1);
@@ -389,7 +391,7 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(rng: &mut R, resources: &mut Resources
 	if bot.alive && bot.timer <= 0 {
 		bot.color = bot.color.interpolate(&colors::BLACK, 0.5);
 		bot.alive = false;
-		bot.timer = DIE_TIME;
+		bot.timer = constants.die;
 		// info!("Die occured!");
 	}
 
@@ -418,10 +420,10 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(rng: &mut R, resources: &mut Resources
 		).cloned().collect();
 
 		// Действия при жизни
-		for _ in 0..MAX_COMMANDS_PER_STEP {
+		for _ in 0..constants.comand {
 			// Бот размножается, если слишком много протеина, и если может
-			if bot.protein >= 10 * MULTIPLY_PROTEIN {
-				let result = multiply(rng, &mut bot, &void_around);
+			if bot.protein >= 10 * constants.multiply {
+				let result = multiply(&constants, rng, &mut bot, &void_around);
 				if let Some((new_pos, new_bot)) = result {
 					// info!("Multiply protein occured! {} {}", bot.protein, new_bot.protein);
 					if let Some(mut new_bot) = bots.set(&new_pos, new_bot) {
@@ -437,8 +439,8 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(rng: &mut R, resources: &mut Resources
 			let comand = bot.program[bot.eip.0].clone();
 			match comand.comand {
 				Multiply => {
-					if bot.protein >= MULTIPLY_PROTEIN {
-						let result = multiply(rng, &mut bot, &void_around);
+					if bot.protein >= constants.multiply {
+						let result = multiply(&constants, rng, &mut bot, &void_around);
 						if let Some((new_pos, mut new_bot)) = result {
 							new_bot.eip = ProgramPos(0);
 							bot.eip = comand.goto_success;
@@ -530,14 +532,14 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(rng: &mut R, resources: &mut Resources
 		return Some((pos, bot));
 	}
 
-	fn multiply<R: Rng + ?Sized>(rng: &mut R, bot: &mut Bot, void_around: &Vec<Vec2i>) -> Option<(Vec2i, Bot)> {
+	fn multiply<R: Rng + ?Sized>(constants: &Constants, rng: &mut R, bot: &mut Bot, void_around: &Vec<Vec2i>) -> Option<(Vec2i, Bot)> {
 		let new_pos = void_around.choose(rng)?;
 		let mut new_bot = bot.clone();
 		if rng.gen_range(0, 3) == 0 {
 			new_bot.mutate(rng);	
 		}
 		new_bot.protein /= 2;
-		new_bot.timer = LIVE_START_TIME;
+		new_bot.timer = constants.live;
 		bot.protein -= new_bot.protein;
 		new_bot.eip = ProgramPos(0);
 		Some((new_pos.clone(), new_bot))
@@ -550,94 +552,19 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(rng: &mut R, resources: &mut Resources
 	}
 }
 
-impl Camera for ImageCamera {
-	fn to(&self, pos: Vec2i) -> Vec2i {
-		let mut pos = pos - &self.offset;
-
-		pos.x /= self.scale as i32;
-		pos.y /= self.scale as i32;
-
-		pos
-	}
-
-	fn from(&self, pos: Vec2i) -> Vec2i {
-		pos * (self.scale.into()) + &self.offset
-	}
-
-	fn from_dir(&self, dir: Vec2i) -> Vec2i {
-		dir * (self.scale.into())	
-	}
-
-	fn offset(&mut self, offset: &Vec2i) {
-		self.offset += offset.clone();
-	}
-
-	fn scale_cam(&mut self, mouse_pos: &Vec2i, add_to_scale: i8) {
-		if self.scale == 1 && add_to_scale < 0 { return; }
-		if self.scale == 128 && add_to_scale > 0 { return; }
-
-		let new_scale = (self.scale as i8 + add_to_scale) as u8;
-		self.offset = (self.offset.clone() - mouse_pos) * new_scale as i32 / self.scale as i32 + mouse_pos;
-		self.scale = new_scale;
-	}
-
-	fn get_scale(&self) -> u8 {
-		self.scale
-	}
-}
-
-impl Camera for RepeatedImageCamera {
-	fn to(&self, mut pos: Vec2i) -> Vec2i {
-		pos = self.cam.to(pos);
-
-		pos.x = mod_size(pos.x, self.size.x);
-		pos.y = mod_size(pos.y, self.size.y);
-
-		return pos;
-
-		fn mod_size(x: i32, size: i32) -> i32 {
-			if x > 0 {
-				x % size
-			} else {
-				size - ((-x) % size)
-			}
-		}
-	}
-
-	fn from(&self, pos: Vec2i) -> Vec2i {
-		self.cam.from(pos)
-	}
-
-	fn from_dir(&self, dir: Vec2i) -> Vec2i {
-		self.cam.from_dir(dir)
-	}
-
-	fn offset(&mut self, offset: &Vec2i) {
-		self.cam.offset(offset);
-	}
-
-	fn scale_cam(&mut self, mouse_pos: &Vec2i, add_to_scale: i8) {
-		self.cam.scale_cam(mouse_pos, add_to_scale);
-	}
-
-	fn get_scale(&self) -> u8 {
-		self.cam.get_scale()
-	}
-}
-
-impl<R: Rng, C: Camera, G: Grid<Bot>> Window<R, C, G> {
-    fn new(rng: R, cam: C, world: World<G>) -> Self {
-    	let font_data = include_bytes!("Anonymous.ttf");
-        Window {
-            image: Image::new(&Vec2i::new(1920, 1080)),
-            world,
-            rng: rng,
-            cam: cam,
-			draw: FpsWithCounter::new(100),
-			simulate: FpsWithCounter::new(100),
+impl<R: Rng, G: Grid<Bot>> Window<R, G> {
+	fn new(constants: Constants, rng: R, cam: FloatImageCamera, world: World<G>) -> Self {
+		let font_data = include_bytes!("Anonymous Pro.ttf");
+		Window {
+			image: Image::new(&Vec2i::new(1920, 1080)),
+			world,
+			rng: rng,
+			cam: cam,
+			draw: FpsWithCounter::new(20),
+			simulate: FpsWithCounter::new(20),
 			last_mouse_pos: Vec2i::default(),
 			mouse_move: false,
-			current_cam_scale: 0,
+			current_cam_scale: 0.0,
 			font: Font::from_bytes(font_data as &[u8]).expect("Error constructing Font"),
 			performance_info: PerformanceInfo {
 				tps: 0,
@@ -645,195 +572,354 @@ impl<R: Rng, C: Camera, G: Grid<Bot>> Window<R, C, G> {
 				fps: 0,
 			},
 			fps: FpsByLastTime::new(2.0),
-        }
-    }
+			constants,
+		}
+	}
 }
 
-impl<R: Rng, C: Camera, G: Grid<Bot>> MyEvents for Window<R, C, G> {
-    fn update(&mut self) {
-    	let mut counter = 0;
-    	let rng = &mut self.rng;
-    	let world = &mut self.world;
-    	if let Some(d) = self.simulate.action(|clock| {
-	    	while clock.elapsed().fps() > 60.0 && counter < 8 {
-	    		process_world(rng, world);
-	    		counter += 1;
-	    	}
-	    }) {
-	    	self.performance_info.tps = d.fps() as usize * counter;
-	    	self.performance_info.steps_per_frame = counter;
-	    }
-    }
+impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
+	fn update(&mut self) {
+		let mut counter = 0;
+		let rng = &mut self.rng;
+		let world = &mut self.world;
+		let constants = &self.constants;
+		if let Some(d) = self.simulate.action(|clock| {
+			while clock.elapsed().fps() > 60.0 && counter < 8 {
+				process_world(constants, rng, world);
+				counter += 1;
+			}
+		}) {
+			self.performance_info.tps = d.fps() as usize * counter;
+			self.performance_info.steps_per_frame = counter;
+		}
+	}
 
-    fn draw(&mut self) {
-    	let world = &self.world;
-    	let image = &mut self.image;
-    	let cam = &self.cam;
-    	let font = &self.font;
-    	let perf = &self.performance_info;
-    	let fps = &self.fps;
-    	if let Some(d) = self.draw.action(|_| {
-	        image.clear(&bufdraw::image::Color::gray(0));
-	        for (pos, bot) in world.bots.iter() {
-	        	draw_repeated_rect(image, &cam.from(pos.clone()), &cam.from_dir(Vec2i::new(1, 1)), &bot.color, world.bots.get_repeat_x(), world.bots.get_repeat_y());
-	        }
-	        let all_resources = world.bots.iter().fold(0, |acc, x| acc + x.1.protein) + world.resources.free_protein + world.resources.oxygen + world.resources.carbon;
-	        draw_text(
-	        	image, 
-	        	font, 
-	        	format!(
-	        		"\
-	        		bots: {}\n\
-	        		protein: {}\n\
-	        		oxygen: {}\n\
-	        		carbon: {}\n\
-	        		all resources: {}\n\
-	        		\n\
-	        		potential fps: {}\n\
-	        		real fps: {}\n\
-	        		simulations per second: {}\n\
-	        		simulations per frame: {}\n\
-	        		",
-	        		world.bots.len(),
-	        		world.resources.free_protein, 
-	        		world.resources.oxygen, 
-	        		world.resources.carbon,
-	        		all_resources,
-	        		perf.fps,
-	        		fps.fps() as i32,
-	        		perf.tps,
-	        		perf.steps_per_frame,
-	        	).as_str(), 
-	        	15.0, 
-	        	&Vec2i::new(5, 5), 
-	        	&bufdraw::image::Color::rgba(255, 255, 255, 190)
-	        );
-	    }) {
-	    	self.performance_info.fps = d.fps() as usize;
-	    }
-	    self.fps.frame();
-    }
+	fn draw(&mut self) {
+		let world = &self.world;
+		let image = &mut self.image;
+		let cam = &self.cam;
+		let font = &self.font;
+		let perf = &self.performance_info;
+		let fps = &self.fps;
+		if let Some(d) = self.draw.action(|_| {
+			image.clear(&bufdraw::image::Color::gray(0));
+			for (pos, bot) in world.bots.iter() {
+				draw_repeated_rect(image, &cam.from(pos.clone()), &cam.from_dir(Vec2i::new(1, 1)), &bot.color, world.bots.get_repeat_x(), world.bots.get_repeat_y());
+			}
+			let all_resources = world.bots.iter().fold(0, |acc, x| acc + x.1.protein) + world.resources.free_protein + world.resources.oxygen + world.resources.carbon;
+			let text = format!(
+				"\
+				bots: {}\n\
+				protein: {}\n\
+				oxygen: {}\n\
+				carbon: {}\n\
+				all resources: {}\n\
+				\n\
+				potential fps: {}\n\
+				real fps: {}\n\
+				simulations per second: {}\n\
+				simulations per frame: {}\n",
+				world.bots.len(),
+				world.resources.free_protein, 
+				world.resources.oxygen, 
+				world.resources.carbon,
+				all_resources,
+				perf.fps,
+				fps.fps() as i32,
+				perf.tps,
+				perf.steps_per_frame,
+			);
+			let pos = Vec2i::new(5, 5);
+			let border = 4;
+			let border_vec = Vec2i::new(border, border);
+			let text_sz: f32 = 17.0;
+			draw_rect(image, &(pos.clone() - &border_vec), &(text_size(font, &text, text_sz) + &border_vec + &border_vec), &Color::rgba(0, 0, 0, 150));
+			draw_text(image, font, &text, text_sz, &pos, &Color::rgba(255, 255, 255, 255));
+		}) {
+			self.performance_info.fps = d.fps() as usize;
+		}
+		self.fps.frame();
+	}
 
-    fn resize_event(&mut self, new_size: Vec2i) {
-        self.image.resize_lazy(&new_size);
-        if self.cam.to(Vec2i::default()) == Vec2i::default() {
-        	self.cam.offset(&((new_size - &(WORLD_SIZE * START_CAM_SCALE as i32)) / 2));
+	fn resize_event(&mut self, mut new_size: Vec2i) {
+		new_size = new_size / self.constants.image_scale as i32;
+		self.image.resize_lazy(&new_size);
+		if self.cam.to(Vec2i::default()) == Vec2i::default() {
+			self.cam.offset(&((new_size - &(self.constants.size() * self.constants.scale)) / 2));
 		self.fps.clear();
-        }
-    }
+		}
+	}
 
-    fn mouse_motion_event(&mut self, pos: Vec2i, _offset: Vec2i) {
-    	if self.mouse_move {
-    		self.cam.offset(&(pos.clone() - &self.last_mouse_pos));
-    	}
-    	self.last_mouse_pos = pos;
-    }
+	fn mouse_motion_event(&mut self, pos: Vec2i, _offset: Vec2i) {
+		let pos = pos.clone() / self.constants.image_scale as i32;
+		if self.mouse_move {
+			self.cam.offset(&(pos.clone() - &self.last_mouse_pos));
+		}
+		self.last_mouse_pos = pos;
+	}
 
-    fn touch_three_move(&mut self, _pos: &Vec2i, offset: &Vec2i) {
-        self.cam.offset(offset);
-    }
+	fn touch_three_move(&mut self, _pos: &Vec2i, offset: &Vec2i) {
+		self.cam.offset(offset);
+	}
 
-    fn touch_one_move(&mut self, _pos: &Vec2i, offset: &Vec2i) {
-        self.cam.offset(offset);
-    }
+	fn touch_one_move(&mut self, _pos: &Vec2i, offset: &Vec2i) {
+		let offset = offset.clone() / self.constants.image_scale as i32;
+		self.cam.offset(&offset);
+	}
 
-    fn touch_scale_start(&mut self, _pos: &Vec2i) {
-        self.current_cam_scale = self.cam.get_scale();
-    }
-    fn touch_scale_change(&mut self, scale: f32, pos: &Vec2i, offset: &Vec2i) {
-    	self.cam.offset(offset);
-    	let current_scale = (self.current_cam_scale as f32 * scale) as u8;
-    	if current_scale != self.cam.get_scale() && current_scale != 0 {
-    		self.cam.scale_cam(pos, (current_scale - self.cam.get_scale()) as i8);
-    	}
-    }
+	fn touch_scale_start(&mut self, _pos: &Vec2i) {
+		self.current_cam_scale = self.cam.get_scale();
+	}
+	fn touch_scale_change(&mut self, scale: f32, pos: &Vec2i, offset: &Vec2i) {
+		let pos = pos.clone() / self.constants.image_scale as i32;
+		let offset = offset.clone() / self.constants.image_scale as i32;
+		self.cam.offset(&offset);
+		self.cam.scale_mul(&pos, scale);
+	}
 
-    fn mouse_button_event(&mut self, button: MouseButton, state: ButtonState, pos: Vec2i) {
-    	self.last_mouse_pos = pos;
-    	use MouseButton::*;
-    	use ButtonState::*;
-    	match button {
-    		Left => {match state {
-    			Down => {
-    				self.mouse_move = true;
-    			},
-    			Up => {
-    				self.mouse_move = false;
-    			},
-    			_ => {},
-    		}},
-    		_ => {},
-    	}
-    }
+	fn mouse_button_event(&mut self, button: MouseButton, state: ButtonState, mut pos: Vec2i) {
+		pos = pos / self.constants.image_scale as i32;
+		self.last_mouse_pos = pos;
+		use MouseButton::*;
+		use ButtonState::*;
+		match button {
+			Left => {match state {
+				Down => {
+					self.mouse_move = true;
+				},
+				Up => {
+					self.mouse_move = false;
+				},
+				_ => {},
+			}},
+			_ => {},
+		}
+	}
 
-    fn mouse_wheel_event(&mut self, pos: Vec2i, dir_vertical: MouseWheelVertical, _dir_horizontal: MouseWheelHorizontal) {
-    	self.last_mouse_pos = pos;
-    	match dir_vertical {
-    		MouseWheelVertical::RotateUp => {
-    			self.cam.scale_cam(&self.last_mouse_pos, 1);
-    		},
-    		MouseWheelVertical::RotateDown => {
-    			self.cam.scale_cam(&self.last_mouse_pos, -1);
-    		},
-    		MouseWheelVertical::Nothing => {
+	fn mouse_wheel_event(&mut self, mut pos: Vec2i, dir_vertical: MouseWheelVertical, _dir_horizontal: MouseWheelHorizontal) {
+		pos = pos / self.constants.image_scale as i32;
+		self.last_mouse_pos = pos;
+		match dir_vertical {
+			MouseWheelVertical::RotateUp => {
+				self.cam.scale_add(&self.last_mouse_pos, 1.0);
+			},
+			MouseWheelVertical::RotateDown => {
+				self.cam.scale_add(&self.last_mouse_pos, -1.0);
+			},
+			MouseWheelVertical::Nothing => {
 
-    		}
-    	}
-    }
+			}
+		}
+	}
 
-    fn key_event(&mut self, keycode: KeyCode, _keymods: KeyMods, state: ButtonState) {
-    	if let bufdraw::ButtonState::Down = state {
-	    	match keycode {
-	    		KeyCode::A => {
-	    			self.cam.scale_cam(&self.last_mouse_pos, 1);
-	    		},
-	    		KeyCode::D => {
-	    			self.cam.scale_cam(&self.last_mouse_pos, -1);
-	    		},
-	    		KeyCode::R => {
-	    			for _ in 0..BOTS_COUNT_START {
-						insert_random_bot(&mut self.rng, &mut self.world);		
+	fn key_event(&mut self, keycode: KeyCode, _keymods: KeyMods, state: ButtonState) {
+		if let bufdraw::ButtonState::Down = state {
+			match keycode {
+				KeyCode::R => {
+					for _ in 0..self.constants.bots {
+						insert_random_bot(&self.constants, &mut self.rng, &mut self.world);		
 					}
-	    		},
-	    		KeyCode::C => {
-	    			self.world.bots.clear()
-	    		},
-	    		_ => {},
-	    	}
-	    }
-    }
+				},
+				KeyCode::C => {
+					self.world.bots.clear();
+				},
+				_ => {},
+			}
+		}
+	}
 }
 
-fn init_world<R: Rng + ?Sized>(mut rng: &mut R) -> World<HashMapGrid<Bot, HorizontalCylinderSpace>> {
+fn init_world<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, mut rng: &mut R, g: G) -> World<G> {
 	let mut world = World {
-		size: WORLD_SIZE,
+		size: constants.size(),
 
 		resources: Resources {
-			free_protein: FREE_PROTEIN_START,
-			oxygen: OXYGEN_START,
-			carbon: CARBON_START,
+			free_protein: constants.protein,
+			oxygen: constants.oxygen,
+			carbon: constants.carbon,
 		},
 
-		bots: HashMapGrid::new(&WORLD_SIZE),
+		bots: g,
 	};
 
-	for _ in 0..BOTS_COUNT_START {
-		insert_random_bot(&mut rng, &mut world);		
+	for _ in 0..constants.bots {
+		insert_random_bot(constants, &mut rng, &mut world);		
 	}
 
 	world
 }
 
+impl Constants {
+	fn size(&self) -> Vec2i {
+		Vec2i::new(self.width, self.height)
+	}
+}
+
+fn get_constants() -> Result<Constants, String> {
+	let mut app = clap_app!(crabots =>
+		(setting: clap::AppSettings::ColorNever)
+		(version: "2.2")
+		(author: 
+			"Ilya Sheprut ->\n\t\
+			<optozorax@gmail.com>,\n\t\
+			<github:optozorax>,\n\t\
+			<telegram:optozorax>,\n\t\
+			<website:optozorax.github.io>.")
+		(about: "\n\
+			Симуляция жизни в виде ботов. Когда-то здесь будет полноценное объяснение.\
+		")
+
+		(@arg width: -w --width +takes_value default_value("100") "Width of world grid")
+		(@arg height: -g --height +takes_value default_value("100") "Height of world grid")
+		(@arg scale: -s --scale +takes_value default_value("3.0") "Initial scale of cam")
+		(@arg image_scale: -a --image_scale +takes_value default_value("1") "All image will be scaled by this value")
+
+		(@arg bots: -b --bots +takes_value default_value("400") "Initial count of bots")
+		(@arg protein: -p --protein +takes_value default_value("3000") "Initial count of free protein")
+		(@arg oxygen: -o --oxygen +takes_value default_value("1000") "Initial count of oxygen")
+		(@arg carbon: -c --carbon +takes_value default_value("1000") "Initial count of carbon")
+
+		(@arg die: -d --die +takes_value default_value("320") "Bots exists <die> steps after death")
+		(@arg live: -l --live +takes_value default_value("160") "Bot can live maximum this count of steps")
+		(@arg comand: -n --comand +takes_value default_value("2") "Maximum commands per step")
+		(@arg multiply: -m --multiply +takes_value default_value("4") "With this count of protein bot can multiply")
+		(@arg seed: -e --seed +takes_value default_value("92") "Seed to random generator")
+
+		(@arg topology: -t --topology +takes_value default_value("Torus") "Topology of space")
+		(@arg container: -r --container +takes_value default_value("HashMap") "Container of bots")
+	);
+	#[cfg(target_arch = "wasm32")]
+	{
+		app = app.usage("index.html?help or index.html?protein=100000&topology=Infinite&a=2");
+	}
+	let matches = app.get_matches_from_safe_borrow(bufdraw::parameters::PROGRAM_PARAMETERS.iter());
+
+	let matches = match matches {
+		Ok(m) => m,
+		Err(e) => return Err(e.message),
+	};
+
+	macro_rules! arg_parse {
+		($name:literal) => {
+			matches
+				.value_of($name)
+				.ok_or(format!("No default value for {}", $name))?
+				.parse()
+				.map_err(stringify(&matches, $name))?
+		};
+	}
+
+	macro_rules! arg_match_parse {
+		($name:literal, $type:ident) => {
+			matches
+				.value_of($name)
+				.ok_or(format!("No default value for {}", $name))?
+				.parse()
+				.map_err(stringify_unit(&matches, $name, &format!("Values can only be: {:?}", $type::iter().collect::<Vec<_>>())))?
+		};
+	}
+	
+	return Ok(Constants {
+		width: arg_parse!("width"),
+		height: arg_parse!("height"),
+		scale: arg_parse!("scale"),
+		image_scale: arg_parse!("image_scale"),
+
+		bots: arg_parse!("bots"),
+		protein: arg_parse!("protein"),
+		oxygen: arg_parse!("oxygen"),
+		carbon: arg_parse!("carbon"),
+
+		die: arg_parse!("die"),
+		live: arg_parse!("live"),
+		comand: arg_parse!("comand"),
+		multiply: arg_parse!("multiply"),
+		seed: arg_parse!("seed"),
+
+		topology: arg_match_parse!("topology", FieldTopology),
+		container: arg_match_parse!("container", FieldContainer),
+	});
+	
+	fn stringify<'a, T: std::fmt::Display>(matches: &'a clap::ArgMatches<'a>, param: &'a str) -> impl Fn(T) -> String + 'a { 
+		return move |t: T| {
+			format!("Error occured while parsing arguments:\n\t{}\n\nYou provided:\n\t{}={}", t, param, matches.value_of(param).unwrap())	
+		}
+	}
+
+	fn stringify_unit<'a>(matches: &'a clap::ArgMatches<'a>, param: &'a str, error: &'a str) -> impl Fn(()) -> String + 'a { 
+		return move |_| {
+			format!("Error occured while parsing arguments:\n\t{}\n\nYou provided:\n\t{}={}", error, param, matches.value_of(param).unwrap())	
+		}
+	}
+}
+
+fn gen_seed(mut seed: u64) -> [u8; 16] {
+	let mut result = [0u8; 16];
+	for i in 0..16 {
+		seed ^= seed << 13;
+		seed ^= seed >> 17;
+		seed ^= seed << 5;
+		result[i] = (seed % 256) as u8;
+	}
+	result
+}
+
+fn main3<G: 'static + Grid<Bot>>(constants: Constants, grid: G) {
+	let mut rng = Pcg32::from_seed(gen_seed(constants.seed));
+	let camera = FloatImageCamera {
+		offset: Vec2i::default(),
+		scale: constants.scale,
+	};
+	let world = init_world(&constants, &mut rng, grid);
+	start(Window::new(constants, rng, camera, world));
+}
+
+fn main2() -> Result<(), String> {
+	let constants = get_constants()?;
+	let container = constants.container.clone();
+	let topology = constants.topology.clone();
+	let size = &constants.size();
+	use FieldTopology::*;
+	use FieldContainer::*;
+	match container {
+		HashMap => {
+			match topology {
+				Torus => 
+					main3(constants, HashMapGrid::<Bot, TorusSpace>::new(size)),
+				VerticalCylinder => 
+					main3(constants, HashMapGrid::<Bot, VerticalCylinderSpace>::new(size)),
+				HorizontalCylinder => 
+					main3(constants, HashMapGrid::<Bot, HorizontalCylinderSpace>::new(size)),
+				Infinite => 
+					main3(constants, HashMapGrid::<Bot, InfiniteSpace>::new_infinite()),
+			}
+		},
+		Vec => {
+			match constants.topology {
+				Torus => 
+					main3(constants, VecGrid::<Bot, TorusSpace>::new(size)),
+				VerticalCylinder => 
+					main3(constants, VecGrid::<Bot, VerticalCylinderSpace>::new(size)),
+				HorizontalCylinder => 
+					main3(constants, VecGrid::<Bot, HorizontalCylinderSpace>::new(size)),
+				Infinite => 
+					return Err("Cant use infinite topology space with Vec, use HashMap instead".to_string()),
+			}
+		},
+	};
+
+	Ok(())
+}
+
 fn main() {
-	let mut rng = Pcg32::from_seed(SEED);
-	let camera = ImageCamera {
-		offset: START_CAM_OFFSET,
-		scale: START_CAM_SCALE,
+	match main2() {
+		Ok(()) => {},
+		Err(m) => {
+			start(TextWindow::new(preprocess_text(&m, 4, Some(100), true), FloatImageCamera {
+				offset: Vec2i::default(),
+				scale: 1.0,
+			}));
+			return;
+		},
 	};
-	let _repeated_camera = RepeatedImageCamera {
-		cam: camera.clone(),
-		size: WORLD_SIZE,
-	};
-	let world = init_world(&mut rng);
-    start(Window::new(rng, camera, world));
 }
