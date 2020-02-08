@@ -674,7 +674,7 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 		let pos = pos.clone() / self.constants.image_scale as i32;
 		let offset = offset.clone() / self.constants.image_scale as i32;
 		self.cam.offset(&offset);
-		self.cam.scale_mul(&pos, scale);
+		self.cam.scale_new(&pos, self.current_cam_scale * scale / self.constants.image_scale as f32);
 	}
 
 	fn mouse_button_event(&mut self, button: MouseButton, state: ButtonState, mut pos: Vec2i) {
