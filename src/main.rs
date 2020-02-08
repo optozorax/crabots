@@ -604,7 +604,7 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 		if let Some(d) = self.draw.action(|_| {
 			image.clear(&bufdraw::image::Color::gray(0));
 			for (pos, bot) in world.bots.iter() {
-				draw_repeated_rect(image, &cam.from(pos.clone()), &cam.from_dir(Vec2i::new(1, 1)), &bot.color, world.bots.get_repeat_x(), world.bots.get_repeat_y());
+				draw_repeated_rect(image, &cam.from_i(pos.clone()), &cam.from_dir_i(Vec2i::new(1, 1)), &bot.color, world.bots.get_repeat_x(), world.bots.get_repeat_y());
 			}
 			let all_resources = world.bots.iter().fold(0, |acc, x| acc + x.1.protein) + world.resources.free_protein + world.resources.oxygen + world.resources.carbon;
 			let text = format!(

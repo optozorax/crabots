@@ -19,6 +19,14 @@ impl FloatImageCamera {
 		dir * self.scale
 	}
 
+	pub fn from_i(&self, pos: Vec2i) -> Vec2i {
+		pos * (self.scale as i32) + &self.offset
+	}
+
+	pub fn from_dir_i(&self, dir: Vec2i) -> Vec2i {
+		dir * (self.scale as i32)
+	}
+
 	pub fn offset(&mut self, offset: &Vec2i) {
 		self.offset += offset.clone();
 	}
