@@ -21,6 +21,8 @@ mod text_window;
 use text_window::*;
 mod camera;
 use crate::camera::*;
+mod rescaled_window;
+use crate::rescaled_window::*;
 
 #[derive(Clone, Debug)]
 /// Integer from 0 to PROGRAM_SIZE
@@ -137,7 +139,7 @@ struct Window<R, G> {
 	mouse_move: bool,
 	current_cam_scale: f32,
 
-	font: Font<'static>,
+	text_cache: TextCache,
 
 	performance_info: PerformanceInfo,
 
@@ -567,7 +569,7 @@ impl<R: Rng, G: Grid<Bot>> Window<R, G> {
 			last_mouse_pos: Vec2i::default(),
 			mouse_move: false,
 			current_cam_scale: 0.0,
-			font: Font::from_bytes(font_data as &[u8]).expect("Error constructing Font"),
+			text_cache: TextCache::new(Font::from_bytes(font_data as &[u8]).expect("Error constructing Font")),
 			performance_info: PerformanceInfo {
 				tps: 0,
 				steps_per_frame: 0,
@@ -600,7 +602,7 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 		let world = &self.world;
 		let image = &mut self.image;
 		let cam = &self.cam;
-		let font = &self.font;
+		let text_cache = &mut self.text_cache;
 		let perf = &self.performance_info;
 		let fps = &self.fps;
 		if let Some(d) = self.draw.action(|_| {
@@ -635,8 +637,8 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 			let border = 4;
 			let border_vec = Vec2i::new(border, border);
 			let text_sz: f32 = 17.0;
-			draw_rect(image, &(pos.clone() - &border_vec), &(text_size(font, &text, text_sz) + &border_vec + &border_vec), &Color::rgba(0, 0, 0, 150));
-			draw_text(image, font, &text, text_sz, &pos, &Color::rgba(255, 255, 255, 255));
+			draw_rect(image, &(pos.clone() - &border_vec), &(text_size(text_cache, &text, text_sz) + &border_vec + &border_vec), &Color::rgba(0, 0, 0, 150));
+			draw_text(image, text_cache, &text, text_sz, &pos, &Color::rgba(255, 255, 255, 255));
 		}) {
 			self.performance_info.fps = d.fps() as usize;
 		}
@@ -644,7 +646,6 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 	}
 
 	fn resize_event(&mut self, mut new_size: Vec2i) {
-		new_size = new_size / self.constants.image_scale as i32;
 		self.image.resize_lazy(&new_size);
 		if self.cam.to(Vec2i::default()) == Vec2i::default() {
 			self.cam.offset(&((new_size - &(self.constants.size() * self.constants.scale)) / 2));
@@ -653,7 +654,6 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 	}
 
 	fn mouse_motion_event(&mut self, pos: Vec2i, _offset: Vec2i) {
-		let pos = pos.clone() / self.constants.image_scale as i32;
 		if self.mouse_move {
 			self.cam.offset(&(pos.clone() - &self.last_mouse_pos));
 		}
@@ -665,7 +665,6 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 	}
 
 	fn touch_one_move(&mut self, _pos: &Vec2i, offset: &Vec2i) {
-		let offset = offset.clone() / self.constants.image_scale as i32;
 		self.cam.offset(&offset);
 	}
 
@@ -673,16 +672,12 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 		self.current_cam_scale = self.cam.get_scale();
 	}
 	fn touch_scale_change(&mut self, scale: f32, pos: &Vec2i, offset: &Vec2i) {
-		let pos = pos.clone() / self.constants.image_scale as i32;
-		let offset = offset.clone() / self.constants.image_scale as i32;
-
-    	let current_scale = (self.current_cam_scale as f32 * scale / self.constants.image_scale as f32) as u8;
+    	let current_scale = (self.current_cam_scale as f32 * scale) as u8;
 		self.cam.offset(&offset);
     	self.cam.scale_new(&pos, current_scale as f32);
 	}
 
 	fn mouse_button_event(&mut self, button: MouseButton, state: ButtonState, mut pos: Vec2i) {
-		pos = pos / self.constants.image_scale as i32;
 		self.last_mouse_pos = pos;
 		use MouseButton::*;
 		use ButtonState::*;
@@ -701,7 +696,6 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 	}
 
 	fn mouse_wheel_event(&mut self, mut pos: Vec2i, dir_vertical: MouseWheelVertical, _dir_horizontal: MouseWheelHorizontal) {
-		pos = pos / self.constants.image_scale as i32;
 		self.last_mouse_pos = pos;
 		match dir_vertical {
 			MouseWheelVertical::RotateUp => {
@@ -762,7 +756,7 @@ impl Constants {
 fn get_constants() -> Result<Constants, String> {
 	let mut app = clap_app!(crabots =>
 		(setting: clap::AppSettings::ColorNever)
-		(version: "2.2")
+		(version: env!("CARGO_PKG_VERSION"))
 		(author: 
 			"Ilya Sheprut ->\n\t\
 			<optozorax@gmail.com>,\n\t\
@@ -913,7 +907,7 @@ fn main3<G: 'static + Grid<Bot>>(constants: Constants, grid: G) {
 		scale: constants.scale,
 	};
 	let world = init_world(&constants, &mut rng, grid);
-	start(Window::new(constants, rng, camera, world));
+	start(RescaledWindow { scale: constants.image_scale as i32, external: Window::new(constants, rng, camera, world) });
 }
 
 fn main2() -> Result<(), String> {

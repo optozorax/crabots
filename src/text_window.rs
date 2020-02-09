@@ -18,6 +18,7 @@ pub struct TextWindow {
 	cam: FloatImageCamera,
 
 	text_image: Image,
+	redraw: bool,
 
 	text: String,
 
@@ -25,7 +26,7 @@ pub struct TextWindow {
 	mouse_move: bool,
 	current_cam_scale: f32,
 
-	font: Font<'static>,
+	text_cache: TextCache,
 }
 
 impl TextWindow {
@@ -35,11 +36,12 @@ impl TextWindow {
 			image: Image::new(&Vec2i::new(1920, 1080)),
 			cam,
 			text_image: Image::new(&Vec2i::new(1920, 1080)),
+			redraw: true,
 			text,
 			last_mouse_pos: Vec2i::default(),
 			mouse_move: false,
 			current_cam_scale: 0.0,
-			font: Font::from_bytes(font_data as &[u8]).expect("Error constructing Font"),
+			text_cache: TextCache::new(Font::from_bytes(font_data as &[u8]).expect("Error constructing Font")),
 		}
 	}
 }
@@ -47,12 +49,12 @@ impl TextWindow {
 impl TextWindow {
 	fn redraw_image(&mut self) {
 		let size_text = 24.0 * self.cam.get_scale();
-		let size = text_size(&self.font, &self.text, size_text);
+		let size = text_size(&self.text_cache, &self.text, size_text);
 		self.text_image.resize_lazy(&size);
 		self.text_image.clear(&Color::rgba(0, 0, 0, 0));
 		draw_text(
 			&mut self.text_image,
-			&self.font, 
+			&mut self.text_cache, 
 			&self.text,
 			size_text,
 			&Vec2i::default(), 
@@ -64,14 +66,18 @@ impl TextWindow {
 impl MyEvents for TextWindow {
 	fn draw(&mut self) {
 		self.image.clear(&bufdraw::image::Color::gray(0));
+		if self.redraw {
+			self.redraw_image();
+			self.redraw = false
+		}
 		place_image(&mut self.image, &self.text_image, &self.cam.from(Vec2i::default()));
 	}
 
 	fn resize_event(&mut self, new_size: Vec2i) {
 		self.image.resize_lazy(&new_size);
 		if self.cam.to(Vec2i::default()) == Vec2i::default() {
-			self.cam.offset(&((new_size - &text_size(&self.font, &self.text, 24.0 * self.cam.get_scale())) / 2));
-			self.redraw_image();
+			self.cam.offset(&((new_size - &text_size(&self.text_cache, &self.text, 24.0 * self.cam.get_scale())) / 2));
+			self.redraw = true;
 		}
 	}
 
@@ -92,7 +98,7 @@ impl MyEvents for TextWindow {
 	fn touch_scale_change(&mut self, scale: f32, pos: &Vec2i, offset: &Vec2i) {
 		self.cam.offset(offset);
 		self.cam.scale_new(pos, self.current_cam_scale * scale);
-		self.redraw_image();
+		self.redraw = true;
 	}
 
 	fn mouse_button_event(&mut self, button: MouseButton, state: ButtonState, pos: Vec2i) {
@@ -118,11 +124,11 @@ impl MyEvents for TextWindow {
 		match dir_vertical {
 			MouseWheelVertical::RotateUp => {
 				self.cam.scale_mul(&self.last_mouse_pos, 1.2);
-				self.redraw_image();
+				self.redraw = true;
 			},
 			MouseWheelVertical::RotateDown => {
 				self.cam.scale_mul(&self.last_mouse_pos, 1.0 / 1.2);
-				self.redraw_image();
+				self.redraw = true;
 			},
 			MouseWheelVertical::Nothing => {
 
