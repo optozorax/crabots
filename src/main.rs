@@ -104,6 +104,7 @@ struct Constants {
 	height: i32,
 	scale: f32,
 	image_scale: u8,
+	benchmark: bool,
 
 	bots: usize,
 	protein: u32,
@@ -345,7 +346,8 @@ fn insert_random_bot<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, mut r
 } 
 
 fn process_world<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, mut rng: &mut R, world: &mut World<G>) {
-	let positions: Vec<Vec2i> = world.bots.iter().map(|x| x.0.clone()).collect();
+	let mut positions: Vec<Vec2i> = world.bots.iter().map(|x| x.0.clone()).collect();
+	positions.sort();
 	for pos in positions {
 		let result = process(&constants, &mut rng, &mut world.resources, &mut world.bots, pos);
 		if let Some((new_pos, new_bot)) = result {
@@ -775,6 +777,7 @@ fn get_constants() -> Result<Constants, String> {
 		(@arg height: -g --height +takes_value default_value("100") "Height of world grid")
 		(@arg scale: -s --scale +takes_value default_value("3.0") "Initial scale of cam")
 		(@arg image_scale: -a --image_scale +takes_value default_value("1") "All image will be scaled by this value")
+		(@arg benchmark: -b --benchmark +takes_value default_value("false") "Run benchmark")
 
 		(@arg bots: -b --bots +takes_value default_value("400") "Initial count of bots")
 		(@arg protein: -p --protein +takes_value default_value("3000") "Initial count of free protein")
@@ -826,6 +829,7 @@ fn get_constants() -> Result<Constants, String> {
 		height: arg_parse!("height"),
 		scale: arg_parse!("scale"),
 		image_scale: arg_parse!("image_scale"),
+		benchmark: arg_parse!("benchmark"),
 
 		bots: arg_parse!("bots"),
 		protein: arg_parse!("protein"),
@@ -866,6 +870,42 @@ fn gen_seed(mut seed: u64) -> [u8; 16] {
 	result
 }
 
+fn run_benchmark() -> String {
+	let constants = Constants {
+		width: 100,
+		height: 100,
+		scale: 1.0,
+		image_scale: 1,
+		benchmark: true,
+
+		bots: 400,
+		protein: 30000,
+		oxygen: 10000,
+		carbon: 10000,
+
+		die: 320,
+		live: 160,
+		comand: 2,
+		multiply: 4,
+		seed: 92,
+
+		topology: FieldTopology::Torus,
+		container: FieldContainer::HashMap,
+	};
+	let steps = 1000;
+	let mut rng = Pcg32::from_seed(gen_seed(constants.seed));
+	let grid = HashMapGrid::<Bot, InfiniteSpace>::new_infinite();
+	let mut bots = 0;
+	let duration = time(|_| {
+		let mut world = init_world(&constants, &mut rng, grid);
+		for _ in 0..steps {
+			bots += world.bots.len();
+			process_world(&constants, &mut rng, &mut world);
+		}	
+	});
+	return format!("Processing {} steps with {} processed bots took {:.2} seconds.\nOr this equals {:.1} × 1000 bots per second.", steps, bots, duration.seconds, bots as f64 / duration.seconds / 1000.0);
+}
+
 fn main3<G: 'static + Grid<Bot>>(constants: Constants, grid: G) {
 	let mut rng = Pcg32::from_seed(gen_seed(constants.seed));
 	let camera = FloatImageCamera {
@@ -878,6 +918,11 @@ fn main3<G: 'static + Grid<Bot>>(constants: Constants, grid: G) {
 
 fn main2() -> Result<(), String> {
 	let constants = get_constants()?;
+
+	if constants.benchmark {
+		return Err(run_benchmark());
+	}
+
 	let container = constants.container.clone();
 	let topology = constants.topology.clone();
 	let size = &constants.size();
