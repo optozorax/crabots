@@ -17,6 +17,8 @@ pub struct TextWindow {
 	image: Image,
 	cam: FloatImageCamera,
 
+	text_image: Image,
+
 	text: String,
 
 	last_mouse_pos: Vec2i,
@@ -32,6 +34,7 @@ impl TextWindow {
 		TextWindow {
 			image: Image::new(&Vec2i::new(1920, 1080)),
 			cam,
+			text_image: Image::new(&Vec2i::new(1920, 1080)),
 			text,
 			last_mouse_pos: Vec2i::default(),
 			mouse_move: false,
@@ -41,23 +44,34 @@ impl TextWindow {
 	}
 }
 
+impl TextWindow {
+	fn redraw_image(&mut self) {
+		let size_text = 24.0 * self.cam.get_scale();
+		let size = text_size(&self.font, &self.text, size_text);
+		self.text_image.resize_lazy(&size);
+		self.text_image.clear(&Color::rgba(0, 0, 0, 0));
+		draw_text(
+			&mut self.text_image,
+			&self.font, 
+			&self.text,
+			size_text,
+			&Vec2i::default(), 
+			&Color::rgba(255, 255, 255, 255)
+		);
+	}
+}
+
 impl MyEvents for TextWindow {
 	fn draw(&mut self) {
 		self.image.clear(&bufdraw::image::Color::gray(0));
-		draw_text(
-			&mut self.image, 
-			&self.font, 
-			&self.text,
-			24.0 * self.cam.get_scale(),
-			&self.cam.from(Vec2i::default()), 
-			&bufdraw::image::Color::rgba(255, 255, 255, 190)
-		);
+		place_image(&mut self.image, &self.text_image, &self.cam.from(Vec2i::default()));
 	}
 
 	fn resize_event(&mut self, new_size: Vec2i) {
 		self.image.resize_lazy(&new_size);
 		if self.cam.to(Vec2i::default()) == Vec2i::default() {
 			self.cam.offset(&((new_size - &text_size(&self.font, &self.text, 24.0 * self.cam.get_scale())) / 2));
+			self.redraw_image();
 		}
 	}
 
@@ -78,6 +92,7 @@ impl MyEvents for TextWindow {
 	fn touch_scale_change(&mut self, scale: f32, pos: &Vec2i, offset: &Vec2i) {
 		self.cam.offset(offset);
 		self.cam.scale_new(pos, self.current_cam_scale * scale);
+		self.redraw_image();
 	}
 
 	fn mouse_button_event(&mut self, button: MouseButton, state: ButtonState, pos: Vec2i) {
@@ -103,9 +118,11 @@ impl MyEvents for TextWindow {
 		match dir_vertical {
 			MouseWheelVertical::RotateUp => {
 				self.cam.scale_mul(&self.last_mouse_pos, 1.2);
+				self.redraw_image();
 			},
 			MouseWheelVertical::RotateDown => {
 				self.cam.scale_mul(&self.last_mouse_pos, 1.0 / 1.2);
+				self.redraw_image();
 			},
 			MouseWheelVertical::Nothing => {
 

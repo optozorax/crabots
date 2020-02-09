@@ -1,13 +1,13 @@
 [package]
 name = "crabots"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["Ilya Sheprut <optozorax@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 rand = "0.7"
 rand_pcg = "0.2"
-bufdraw = { git = "https://github.com/optozorax/bufdraw", version = "0.1.17" }
+bufdraw = { git = "https://github.com/optozorax/bufdraw", version = "0.1.18" }
 # bufdraw = { path = "../bufdraw" }
 log = "0.4"
 ambassador = "0.2.1"

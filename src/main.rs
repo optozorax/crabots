@@ -777,7 +777,7 @@ fn get_constants() -> Result<Constants, String> {
 		(@arg height: -g --height +takes_value default_value("100") "Height of world grid")
 		(@arg scale: -s --scale +takes_value default_value("3.0") "Initial scale of cam")
 		(@arg image_scale: -a --image_scale +takes_value default_value("1") "All image will be scaled by this value")
-		(@arg benchmark: -b --benchmark +takes_value default_value("false") "Run benchmark")
+		(@arg benchmark: -k --benchmark +takes_value default_value("false") "Run benchmark")
 
 		(@arg bots: -b --bots +takes_value default_value("400") "Initial count of bots")
 		(@arg protein: -p --protein +takes_value default_value("3000") "Initial count of free protein")
