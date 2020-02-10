@@ -36,6 +36,9 @@ pub trait GridConstraints {
 	fn is_finite(&self) -> bool;
 }
 
+pub struct RectSpace {
+	size: Vec2i,
+}
 pub struct TorusSpace {
 	size: Vec2i,
 }
@@ -107,7 +110,7 @@ fn rem_repeat_to_interval<'a, T>(min: &T, value: &T, max: &T) -> T where
 	if value < min {
 		return len - (*min - *value) % len;
 	}
-	if value > max {
+	if value >= max {
 		return (*value - *min) % len;
 	}
 	*value
@@ -132,10 +135,17 @@ pub fn available_cells<T, G: Grid<T>>(grid: &G, pos: &Vec2i) -> Vec<Vec2i> {
 	MOORE_NEIGHBORHOOD.iter().filter(|&offset| {
 		grid.can(&(offset.clone() + pos))
 	}
-	).map(|offset| offset.clone() + &pos).collect()
+	).map(|offset| offset.clone() + pos).collect()
 }
 
-
+impl CanFitInSize for RectSpace {
+	fn new(size: &Vec2i) -> Self {
+		Self { size: size.clone() }
+	}
+	fn get_size(&self) -> Vec2i {
+		self.size.clone()
+	}
+}
 impl CanFitInSize for TorusSpace {
 	fn new(size: &Vec2i) -> Self {
 		Self { size: size.clone() }
@@ -161,12 +171,33 @@ impl CanFitInSize for HorizontalCylinderSpace {
 	}
 }
 
+impl GridConstraints for RectSpace {
+	fn can(&self, pos: &Vec2i) -> bool {
+		0 <= pos.x && pos.x < self.size.x &&
+		0 <= pos.y && pos.y < self.size.y
+	}
+	fn remap(&self, pos: &Vec2i) -> Vec2i {
+		debug_assert!(self.can(pos));
+		pos.clone()
+	}
+
+	fn is_repeat_x(&self) -> bool {
+		false
+	}
+	fn is_repeat_y(&self) -> bool {
+		false
+	}
+	fn is_finite(&self) -> bool {
+		true
+	}
+}
+
 impl GridConstraints for TorusSpace {
 	fn can(&self, _pos: &Vec2i) -> bool {
 		true
 	}
 	fn remap(&self, pos: &Vec2i) -> Vec2i {
-		assert!(self.can(pos));
+		debug_assert!(self.can(pos));
 		Vec2i::new(
 			rem_repeat_to_interval(&0, &pos.x, &self.size.x),
 			rem_repeat_to_interval(&0, &pos.y, &self.size.y),
@@ -189,7 +220,7 @@ impl GridConstraints for VerticalCylinderSpace {
 		0 <= pos.x && pos.x < self.size.x
 	}
 	fn remap(&self, pos: &Vec2i) -> Vec2i {
-		assert!(self.can(pos));
+		debug_assert!(self.can(pos));
 		Vec2i::new(
 			pos.x,
 			rem_repeat_to_interval(&0, &pos.y, &self.size.y),
@@ -212,7 +243,7 @@ impl GridConstraints for HorizontalCylinderSpace {
 		0 <= pos.y && pos.y < self.size.y
 	}
 	fn remap(&self, pos: &Vec2i) -> Vec2i {
-		assert!(self.can(pos));
+		debug_assert!(self.can(pos));
 		Vec2i::new(
 			rem_repeat_to_interval(&0, &pos.x, &self.size.x),
 			pos.y,
@@ -267,7 +298,7 @@ impl<T, C> VecGrid<T, C> where
 {
 	fn to_pos(&self, pos: &Vec2i) -> usize {
 		let pos = self.constraints.remap(pos);
-		let pos = pos.x + pos.y;
+		let pos = pos.x + pos.y * self.constraints.get_size().x;
 		pos as usize
 	}
 }
@@ -298,10 +329,15 @@ impl<'a, T: Clone> Iterator for VecGridIterator<'a, T> {
 	type Item = (Vec2i, &'a T);
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
-			self.pos = next_in_rect(&self.pos, &self.size)?;
 			match self.iter.next()? {
-				Some(elem) => return Some((self.pos.clone(), &elem)),
-				None => {},
+				Some(elem) => {
+					let result_pos = self.pos.clone();
+					self.pos = next_in_rect(&self.pos, &self.size)?;
+					return Some((result_pos, &elem))
+				},
+				None => {
+					self.pos = next_in_rect(&self.pos, &self.size)?;
+				},
 			}
 		}
 	}
@@ -330,38 +366,53 @@ impl<T: 'static, C> Grid<T> for VecGrid<T, C> where
 		self.constraints.can(pos)
 	}
 	fn has(&self, pos: &Vec2i) -> bool {
-		self.grid[self.to_pos(pos)].is_some()
+		debug_assert!(self.can(&pos));
+		let pos = self.to_pos(pos);
+		self.grid[pos].is_some()
 	}
 
 	fn get<'a>(&'a self, pos: &Vec2i) -> Option<&'a T> {
-		self.grid[self.to_pos(pos)].as_ref()
+		debug_assert!(self.can(&pos));
+		let pos = self.to_pos(pos);
+		self.grid[pos].as_ref()
 	}
 	fn get_mut<'a>(&'a mut self, pos: &Vec2i) -> Option<&'a mut T> {
+		debug_assert!(self.can(&pos));
 		let pos = self.to_pos(pos);
 		self.grid[pos].as_mut()
 	}
 	fn get_owned(&mut self, pos: &Vec2i) -> Option<T> {
+		debug_assert!(self.can(&pos));
 		let pos = self.to_pos(pos);
-		let owned = self.grid.swap_remove(pos);
 		self.grid.push(None);
-		let len = self.grid.len();
-		self.grid.swap(pos, len - 1);
-		self.count -= 1;
+		let owned = self.grid.swap_remove(pos);
+		if owned.is_some() {
+			self.count -= 1;
+		}
 		owned
 	}
 
 	fn set(&mut self, pos: &Vec2i, obj: T) -> Option<T> {
-		if self.can(&pos) && !self.has(&pos) {
-			self.set(pos, obj);
+		let pos_orig = pos;
+		debug_assert!(self.can(&pos));
+		let pos = self.constraints.remap(pos);
+		if self.can(&pos_orig) && !self.has(&pos) {
+			self.set_unchecked(&pos, obj);
 			None
 		} else {
 			Some(obj)
 		}
 	}
 	fn set_unchecked(&mut self, pos: &Vec2i, obj: T) {
+		debug_assert!(self.can(&pos));
 		let pos = self.to_pos(pos);
-		self.grid[pos] = Some(obj);
-		self.count += 1;
+		let count = &mut self.count;
+		let elem = &mut self.grid[pos];
+
+		if elem.is_none() {
+			*count += 1;
+		}
+		*elem = Some(obj);
 	}
 
 	fn len(&self) -> usize {

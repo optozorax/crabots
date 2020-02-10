@@ -91,6 +91,7 @@ struct PerformanceInfo {
 
 #[derive(Clone, enum_utils::FromStr, enum_utils::IterVariants, Debug)]
 enum FieldTopology {
+	Rect,
 	Torus,
 	VerticalCylinder,
 	HorizontalCylinder,
@@ -400,7 +401,6 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, re
 		bot.color = bot.color.interpolate(&colors::BLACK, 0.5);
 		bot.alive = false;
 		bot.timer = constants.die;
-		// info!("Die occured!");
 	}
 
 	// Полное уничтожение
@@ -433,7 +433,7 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, re
 			if bot.protein >= 10 * constants.multiply {
 				let result = multiply(&constants, rng, &mut bot, &void_around);
 				if let Some((new_pos, new_bot)) = result {
-					// info!("Multiply protein occured! {} {}", bot.protein, new_bot.protein);
+					bot.color = bot.color.interpolate(&colors::BLUE, 0.03);
 					if let Some(mut new_bot) = bots.set(&new_pos, new_bot) {
 						resources.free_protein.stole_full(&mut new_bot.protein);
 					}
@@ -452,7 +452,6 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, re
 						if let Some((new_pos, mut new_bot)) = result {
 							new_bot.eip = ProgramPos(0);
 							bot.eip = comand.goto_success;
-							// info!("Multiply occured! {} {}", bot.protein, new_bot.protein);
 							bot.color = bot.color.interpolate(&colors::BLUE, 0.03);
 							if let Some(mut new_bot) = bots.set(&new_pos, new_bot) {
 								resources.free_protein.stole_full(&mut new_bot.protein);
@@ -472,7 +471,6 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, re
 
 						bot.color = bot.color.interpolate(&colors::GREEN, 0.03);
 						bot.eip = comand.goto_success;
-						// info!("Photosynthesis occured!");
 						return Some((pos, bot));
 					} else {
 						bot.eip = comand.goto_fail;
@@ -491,7 +489,6 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, re
 
 								bot.color = bot.color.interpolate(&colors::RED, 0.03);
 								bot.eip = comand.goto_success;
-								// info!("Attack occured!");
 								return Some((pos, bot));	
 							} else {
 								bot.eip = comand.goto_fail;
@@ -509,7 +506,6 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, re
 
 						bot.color = bot.color.interpolate(&colors::GRAY, 0.03);
 						bot.timer = bot.timer.saturating_sub(10);
-						// info!("Food occured!");
 						return Some((pos, bot));
 					} else {
 						bot.eip = comand.goto_fail;
@@ -519,7 +515,6 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, re
 					if void_around.len() > 0 {
 						let new_pos = void_around.choose(rng).unwrap();
 						bot.color = bot.color.interpolate(&colors::WHITE, 0.03);
-						//// info!("Move occured!");
 						bot.eip = comand.goto_success;
 						return Some((new_pos.clone(), bot));
 					} else {
@@ -528,7 +523,6 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, re
 				},
 			}
 		}
-		//return destruct(resources, &mut bot);
 		return Some((pos, bot))
 	} else {
 		// Действия после смерти
@@ -536,7 +530,6 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, re
 		if bot.protein.can_stole() {
 			resources.free_protein.stole(&mut bot.protein);
 		}
-		//// info!("After die occured!");
 		return Some((pos, bot));
 	}
 
@@ -565,7 +558,7 @@ impl<R: Rng, G: Grid<Bot>> Window<R, G> {
 		let font_data = include_bytes!("Anonymous Pro.ttf");
 		Window {
 			image: Image::new(&Vec2i::new(1920, 1080)),
-			bot_image: Image::new(&(constants.size() + &Vec2i::new(1, 1))),
+			bot_image: Image::new(&constants.size()),
 			world,
 			rng: rng,
 			cam: cam,
@@ -580,8 +573,8 @@ impl<R: Rng, G: Grid<Bot>> Window<R, G> {
 				steps_per_frame: 0,
 				fps: 0,
 			},
-			fps: FpsByLastTime::new(2.0),
-			tps: FpsByLastTime::new(2.0),
+			fps: FpsByLastTime::new(5.0),
+			tps: FpsByLastTime::new(5.0),
 			constants,
 		}
 	}
@@ -595,7 +588,7 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 		let constants = &self.constants;
 		let tps = &mut self.tps;
 		if let Some(d) = self.simulate.action(|clock| {
-			while clock.elapsed().fps() > 60.0 && counter < 8 {
+			while clock.elapsed().fps() > 60.0 {
 				process_world(constants, rng, world);
 				tps.frame();
 				counter += 1;
@@ -957,6 +950,8 @@ fn main2() -> Result<(), String> {
 	match container {
 		HashMap => {
 			match topology {
+				Rect => 
+					main3(constants, HashMapGrid::<Bot, RectSpace>::new(size)),
 				Torus => 
 					main3(constants, HashMapGrid::<Bot, TorusSpace>::new(size)),
 				VerticalCylinder => 
@@ -969,6 +964,8 @@ fn main2() -> Result<(), String> {
 		},
 		Vec => {
 			match constants.topology {
+				Rect => 
+					main3(constants, VecGrid::<Bot, RectSpace>::new(size)),
 				Torus => 
 					main3(constants, VecGrid::<Bot, TorusSpace>::new(size)),
 				VerticalCylinder => 
