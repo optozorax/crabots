@@ -581,6 +581,11 @@ impl<R: Rng, G: Grid<Bot>> Window<R, G> {
 }
 
 impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
+	fn init(&mut self) {
+		self.fps.clear();
+		self.tps.clear();
+	}
+
 	fn update(&mut self) {
 		let mut counter = 0;
 		let rng = &mut self.rng;
@@ -697,9 +702,11 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 		self.current_cam_scale = self.cam.get_scale();
 	}
 	fn touch_scale_change(&mut self, scale: f32, pos: &Vec2i, offset: &Vec2i) {
-    	let current_scale = (self.current_cam_scale as f32 * scale) as u8;
+		let current_scale = (self.current_cam_scale as f32 * scale) as u8;
 		self.cam.offset(&offset);
-    	self.cam.scale_new(&pos, current_scale as f32);
+		if current_scale != 0 {
+			self.cam.scale_new(&pos, current_scale as f32);	
+		}
 	}
 
 	fn mouse_button_event(&mut self, button: MouseButton, state: ButtonState, pos: Vec2i) {

@@ -51,7 +51,7 @@ impl TextWindow {
 		let size_text = 24.0 * self.cam.get_scale();
 		let size = text_size(&self.text_cache, &self.text, size_text);
 		self.text_image.resize_lazy(&size);
-		self.text_image.clear(&Color::rgba(0, 0, 0, 0));
+		self.text_image.clear(&Color::rgba(0, 0, 0, 255));
 		draw_text(
 			&mut self.text_image,
 			&mut self.text_cache, 
@@ -65,7 +65,7 @@ impl TextWindow {
 
 impl MyEvents for TextWindow {
 	fn draw(&mut self) {
-		self.image.clear(&bufdraw::image::Color::gray(0));
+		self.image.clear(&Color::gray(0));
 		if self.redraw {
 			self.redraw_image();
 			self.redraw = false
