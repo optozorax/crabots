@@ -22,16 +22,18 @@ pub trait Grid<T>: for<'b> MyIter<'b, T> {
 	fn len(&self) -> usize;
 	fn clear(&mut self);
 
-	fn get_repeat_x(&self) -> Option<u32>;
-	fn get_repeat_y(&self) -> Option<u32>;
+	fn is_repeat_x(&self) -> bool;
+	fn is_repeat_y(&self) -> bool;
+	fn is_finite(&self) -> bool;
 }
 
 pub trait GridConstraints {
 	fn can(&self, pos: &Vec2i) -> bool;
 	fn remap(&self, pos: &Vec2i) -> Vec2i;
 
-	fn get_repeat_x(&self) -> Option<u32>;
-	fn get_repeat_y(&self) -> Option<u32>;
+	fn is_repeat_x(&self) -> bool;
+	fn is_repeat_y(&self) -> bool;
+	fn is_finite(&self) -> bool;
 }
 
 pub struct TorusSpace {
@@ -171,11 +173,14 @@ impl GridConstraints for TorusSpace {
 		)
 	}
 
-	fn get_repeat_x(&self) -> Option<u32> {
-		Some(self.size.x as u32)
+	fn is_repeat_x(&self) -> bool {
+		true
 	}
-	fn get_repeat_y(&self) -> Option<u32> {
-		Some(self.size.y as u32)
+	fn is_repeat_y(&self) -> bool {
+		true
+	}
+	fn is_finite(&self) -> bool {
+		true
 	}
 }
 
@@ -191,11 +196,14 @@ impl GridConstraints for VerticalCylinderSpace {
 		)
 	}
 
-	fn get_repeat_x(&self) -> Option<u32> {
-		None
+	fn is_repeat_x(&self) -> bool {
+		false
 	}
-	fn get_repeat_y(&self) -> Option<u32> {
-		Some(self.size.y as u32)
+	fn is_repeat_y(&self) -> bool {
+		true
+	}
+	fn is_finite(&self) -> bool {
+		true
 	}
 }
 
@@ -211,11 +219,14 @@ impl GridConstraints for HorizontalCylinderSpace {
 		)
 	}
 
-	fn get_repeat_x(&self) -> Option<u32> {
-		Some(self.size.x as u32)
+	fn is_repeat_x(&self) -> bool {
+		true
 	}
-	fn get_repeat_y(&self) -> Option<u32> {
-		None
+	fn is_repeat_y(&self) -> bool {
+		false
+	}
+	fn is_finite(&self) -> bool {
+		true
 	}
 }
 
@@ -227,11 +238,14 @@ impl GridConstraints for InfiniteSpace {
 		pos.clone()
 	}
 
-	fn get_repeat_x(&self) -> Option<u32> {
-		None
+	fn is_repeat_x(&self) -> bool {
+		false
 	}
-	fn get_repeat_y(&self) -> Option<u32> {
-		None
+	fn is_repeat_y(&self) -> bool {
+		false
+	}
+	fn is_finite(&self) -> bool {
+		false
 	}
 }
 
@@ -360,11 +374,14 @@ impl<T: 'static, C> Grid<T> for VecGrid<T, C> where
 		}
 	}
 
-	fn get_repeat_x(&self) -> Option<u32> {
-		self.constraints.get_repeat_x()
+	fn is_repeat_x(&self) -> bool {
+		self.constraints.is_repeat_x()
 	}
-	fn get_repeat_y(&self) -> Option<u32> {
-		self.constraints.get_repeat_y()
+	fn is_repeat_y(&self) -> bool {
+		self.constraints.is_repeat_y()
+	}
+	fn is_finite(&self) -> bool {
+		self.constraints.is_finite()
 	}
 }
 
@@ -443,10 +460,13 @@ impl<T: 'static, C> Grid<T> for HashMapGrid<T, C> where
 		self.grid.clear();
 	}
 
-	fn get_repeat_x(&self) -> Option<u32> {
-		self.constraints.get_repeat_x()
+	fn is_repeat_x(&self) -> bool {
+		self.constraints.is_repeat_x()
 	}
-	fn get_repeat_y(&self) -> Option<u32> {
-		self.constraints.get_repeat_y()
+	fn is_repeat_y(&self) -> bool {
+		self.constraints.is_repeat_y()
+	}
+	fn is_finite(&self) -> bool {
+		self.constraints.is_finite()
 	}
 }

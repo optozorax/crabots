@@ -5,6 +5,8 @@ use rand_pcg::Pcg32;
 
 use ambassador::Delegate;
 
+use log::info;
+
 use clap::clap_app;
 
 use bufdraw::*;
@@ -127,6 +129,7 @@ struct Constants {
 #[delegate(ImageTrait, target = "image")]
 struct Window<R, G> {
 	image: Image,
+	bot_image: Image,
 
 	world: World<G>,
 	rng: R,
@@ -144,6 +147,7 @@ struct Window<R, G> {
 	performance_info: PerformanceInfo,
 
 	fps: FpsByLastTime,
+	tps: FpsByLastTime,
 
 	constants: Constants,
 }
@@ -561,6 +565,7 @@ impl<R: Rng, G: Grid<Bot>> Window<R, G> {
 		let font_data = include_bytes!("Anonymous Pro.ttf");
 		Window {
 			image: Image::new(&Vec2i::new(1920, 1080)),
+			bot_image: Image::new(&(constants.size() + &Vec2i::new(1, 1))),
 			world,
 			rng: rng,
 			cam: cam,
@@ -576,6 +581,7 @@ impl<R: Rng, G: Grid<Bot>> Window<R, G> {
 				fps: 0,
 			},
 			fps: FpsByLastTime::new(2.0),
+			tps: FpsByLastTime::new(2.0),
 			constants,
 		}
 	}
@@ -587,9 +593,11 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 		let rng = &mut self.rng;
 		let world = &mut self.world;
 		let constants = &self.constants;
+		let tps = &mut self.tps;
 		if let Some(d) = self.simulate.action(|clock| {
 			while clock.elapsed().fps() > 60.0 && counter < 8 {
 				process_world(constants, rng, world);
+				tps.frame();
 				counter += 1;
 			}
 		}) {
@@ -605,11 +613,29 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 		let text_cache = &mut self.text_cache;
 		let perf = &self.performance_info;
 		let fps = &self.fps;
+		let tps = &self.tps;
+		let bot_image = &mut self.bot_image;
 		if let Some(d) = self.draw.action(|_| {
-			image.clear(&bufdraw::image::Color::gray(0));
-			for (pos, bot) in world.bots.iter() {
-				draw_repeated_rect(image, &cam.from_i(pos.clone()), &cam.from_dir_i(Vec2i::new(1, 1)), &bot.color, world.bots.get_repeat_x(), world.bots.get_repeat_y());
+			image.clear(&Color::gray(0));
+			if world.bots.is_finite() {
+				bot_image.clear(&Color::gray(0));
+				for (pos, bot) in world.bots.iter() {
+					set_pixel(bot_image, &pos, &bot.color);
+				}
+				place_repeated_scaled_image(
+					image, 
+					bot_image, 
+					&cam.from((0, 0).into()), 
+					cam.get_scale() as i32, 
+					world.bots.is_repeat_x(), 
+					world.bots.is_repeat_y()
+				);
+			} else {
+				for (pos, bot) in world.bots.iter() {
+					rect(image, &cam.from_i(pos.clone()), &cam.from_dir_i(Vec2i::new(1, 1)), &bot.color);
+				}
 			}
+			
 			let all_resources = world.bots.iter().fold(0, |acc, x| acc + x.1.protein) + world.resources.free_protein + world.resources.oxygen + world.resources.carbon;
 			let text = format!(
 				"\
@@ -619,9 +645,14 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 				carbon: {}\n\
 				all resources: {}\n\
 				\n\
-				potential fps: {}\n\
-				real fps: {}\n\
-				simulations per second: {}\n\
+				fps:\n\
+				potential: {}\n\
+				real:      {}\n\
+				\n\
+				simulations per second:\n\
+				potential: {}\n\
+				real:      {}\n\
+				\n\
 				simulations per frame: {}\n",
 				world.bots.len(),
 				world.resources.free_protein, 
@@ -631,6 +662,7 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 				perf.fps,
 				fps.fps() as i32,
 				perf.tps,
+				tps.fps() as i32,
 				perf.steps_per_frame,
 			);
 			let pos = Vec2i::new(5, 5);
@@ -645,7 +677,7 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 		self.fps.frame();
 	}
 
-	fn resize_event(&mut self, mut new_size: Vec2i) {
+	fn resize_event(&mut self, new_size: Vec2i) {
 		self.image.resize_lazy(&new_size);
 		if self.cam.to(Vec2i::default()) == Vec2i::default() {
 			self.cam.offset(&((new_size - &(self.constants.size() * self.constants.scale)) / 2));
@@ -677,7 +709,7 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
     	self.cam.scale_new(&pos, current_scale as f32);
 	}
 
-	fn mouse_button_event(&mut self, button: MouseButton, state: ButtonState, mut pos: Vec2i) {
+	fn mouse_button_event(&mut self, button: MouseButton, state: ButtonState, pos: Vec2i) {
 		self.last_mouse_pos = pos;
 		use MouseButton::*;
 		use ButtonState::*;
@@ -695,7 +727,7 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 		}
 	}
 
-	fn mouse_wheel_event(&mut self, mut pos: Vec2i, dir_vertical: MouseWheelVertical, _dir_horizontal: MouseWheelHorizontal) {
+	fn mouse_wheel_event(&mut self, pos: Vec2i, dir_vertical: MouseWheelVertical, _dir_horizontal: MouseWheelHorizontal) {
 		self.last_mouse_pos = pos;
 		match dir_vertical {
 			MouseWheelVertical::RotateUp => {
