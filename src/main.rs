@@ -104,6 +104,7 @@ enum FieldContainer {
 	Vec,
 }
 
+#[derive(Debug)]
 struct Constants {
 	width: i32,
 	height: i32,
@@ -663,7 +664,7 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 				tps.fps() as i32,
 				perf.steps_per_frame,
 			);
-			let pos = Vec2i::new(5, 5);
+			let pos = Vec2i::new(7, 7);
 			let border = 4;
 			let border_vec = Vec2i::new(border, border);
 			let text_sz: f32 = 17.0;
@@ -786,6 +787,12 @@ impl Constants {
 }
 
 fn get_constants() -> Result<Constants, String> {
+	#[cfg(target_arch = "wasm32")]
+	let default_scale = "2";
+
+	#[cfg(not(target_arch = "wasm32"))]
+	let default_scale = "1";
+
 	let mut app = clap_app!(crabots =>
 		(setting: clap::AppSettings::ColorNever)
 		(version: env!("CARGO_PKG_VERSION"))
@@ -802,7 +809,7 @@ fn get_constants() -> Result<Constants, String> {
 		(@arg width: -w --width +takes_value default_value("100") "Width of world grid")
 		(@arg height: -g --height +takes_value default_value("100") "Height of world grid")
 		(@arg scale: -s --scale +takes_value default_value("3.0") "Initial scale of cam")
-		(@arg image_scale: -a --image_scale +takes_value default_value("1") "All image will be scaled by this value")
+		(@arg image_scale: -a --image_scale +takes_value default_value(default_scale) "All image will be scaled by this value")
 		(@arg benchmark: -k --benchmark +takes_value default_value("false") "Run benchmark")
 
 		(@arg bots: -b --bots +takes_value default_value("400") "Initial count of bots")
@@ -817,7 +824,7 @@ fn get_constants() -> Result<Constants, String> {
 		(@arg seed: -e --seed +takes_value default_value("92") "Seed to random generator")
 
 		(@arg topology: -t --topology +takes_value default_value("Torus") "Topology of space")
-		(@arg container: -r --container +takes_value default_value("HashMap") "Container of bots")
+		(@arg container: -r --container +takes_value default_value("Vec") "Container of bots")
 	);
 	#[cfg(target_arch = "wasm32")]
 	{
@@ -916,11 +923,11 @@ fn run_benchmark() -> String {
 		seed: 92,
 
 		topology: FieldTopology::Torus,
-		container: FieldContainer::HashMap,
+		container: FieldContainer::Vec,
 	};
 	let steps = 1000;
 	let mut rng = Pcg32::from_seed(gen_seed(constants.seed));
-	let grid = HashMapGrid::<Bot, InfiniteSpace>::new_infinite();
+	let grid = VecGrid::<Bot, TorusSpace>::new(&constants.size());
 	let mut bots = 0;
 	let duration = time(|_| {
 		let mut world = init_world(&constants, &mut rng, grid);
@@ -929,7 +936,24 @@ fn run_benchmark() -> String {
 			process_world(&constants, &mut rng, &mut world);
 		}	
 	});
-	return format!("Processing {} steps with {} processed bots took {:.2} seconds.\nOr this equals {:.1} × 1000 bots per second.", steps, bots, duration.seconds, bots as f64 / duration.seconds / 1000.0);
+	return format!("\
+		Benchmark:\n\t\
+			{} steps\n\t\
+			{} processed bots\n\t\
+			{:.2} seconds took\n\
+		Or this equals\n\t\
+			{:.1} steps per second\n\t\
+			{:.1} × 10³ bots per second.\n\
+		\n\
+		{:#?}\
+		", 
+		steps, 
+		bots, 
+		duration.seconds, 
+		steps as f64 / duration.seconds,
+		bots as f64 / duration.seconds / 1000.0, 
+		constants
+	);
 }
 
 fn main3<G: 'static + Grid<Bot>>(constants: Constants, grid: G) {
