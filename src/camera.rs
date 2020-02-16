@@ -15,6 +15,7 @@ impl FloatImageCamera {
 		pos * self.scale + &self.offset
 	}
 
+	#[allow(dead_code)]
 	pub fn from_dir(&self, dir: Vec2i) -> Vec2i {
 		dir * self.scale
 	}

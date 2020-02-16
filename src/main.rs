@@ -5,8 +5,6 @@ use rand_pcg::Pcg32;
 
 use ambassador::Delegate;
 
-use log::info;
-
 use clap::clap_app;
 
 use bufdraw::*;
@@ -208,12 +206,12 @@ const PROGRAM_SIZE: usize = 5;
 
 impl Creature for Color {
 	fn make_random<R: Rng + ?Sized>(rng: &mut R) -> Self {
-		return Color {
+		Color {
 			r: Creature::make_random(rng),
 			g: Creature::make_random(rng),
 			b: Creature::make_random(rng),
 			a: 255,
-		};
+		}
 	}
 
 	fn mutate<R: Rng + ?Sized>(&mut self, rng: &mut R) {
@@ -312,7 +310,7 @@ impl Creature for Program {
 
 impl Creature for Bot {
 	fn make_random<R: Rng + ?Sized>(rng: &mut R) -> Self {
-		return Bot {
+		Bot {
 			color: Creature::make_random(rng),
 			timer: 0,
 			protein: 0,
@@ -354,7 +352,7 @@ fn insert_random_bot<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, mut r
 } 
 
 fn process_world<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, mut rng: &mut R, world: &mut World<G>) {
-	let mut positions: Vec<Vec2i> = world.bots.iter().map(|x| x.0.clone()).collect();
+	let mut positions: Vec<Vec2i> = world.bots.iter().map(|x| x.0).collect();
 	positions.sort();
 	for pos in positions {
 		let result = process(&constants, &mut rng, &mut world.resources, &mut world.bots, pos);
@@ -398,14 +396,14 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, re
 	bot.timer = bot.timer.saturating_sub(1);
 
 	// Момент смерти
-	if bot.alive && bot.timer <= 0 {
+	if bot.alive && bot.timer == 0 {
 		bot.color = bot.color.interpolate(&colors::BLACK, 0.5);
 		bot.alive = false;
 		bot.timer = constants.die;
 	}
 
 	// Полное уничтожение
-	if !bot.alive && bot.timer <= 0 {
+	if !bot.alive && bot.timer == 0 {
 		return destruct(resources, &mut bot);
 	}
 
@@ -478,7 +476,7 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, re
 					}
 				},
 				Attack => {
-					if alive_around.len() > 0 && resources.oxygen.can_stole() {
+					if !alive_around.is_empty() && resources.oxygen.can_stole() {
 						let attack_to = alive_around.choose(rng).unwrap();
 
 						if let Some(mut attacked) = bots.get_owned(attack_to) {
@@ -513,7 +511,7 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, re
 					}
 				},
 				Move => {
-					if void_around.len() > 0 {
+					if !void_around.is_empty() {
 						let new_pos = void_around.choose(rng).unwrap();
 						bot.color = bot.color.interpolate(&colors::WHITE, 0.03);
 						bot.eip = comand.goto_success;
@@ -534,7 +532,7 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, re
 		return Some((pos, bot));
 	}
 
-	fn multiply<R: Rng + ?Sized>(constants: &Constants, rng: &mut R, bot: &mut Bot, void_around: &Vec<Vec2i>) -> Option<(Vec2i, Bot)> {
+	fn multiply<R: Rng + ?Sized>(constants: &Constants, rng: &mut R, bot: &mut Bot, void_around: &[Vec2i]) -> Option<(Vec2i, Bot)> {
 		let new_pos = void_around.choose(rng)?;
 		let mut new_bot = bot.clone();
 		if rng.gen_range(0, 3) == 0 {
@@ -550,7 +548,7 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, re
 	fn destruct(resources: &mut Resources, bot: &mut Bot) -> Option<(Vec2i, Bot)> {
 		// info!("Destruction occured!");
 		resources.free_protein.stole_full(&mut bot.protein);
-		return None;
+		None
 	}
 }
 
@@ -561,8 +559,8 @@ impl<R: Rng, G: Grid<Bot>> Window<R, G> {
 			image: Image::new(&Vec2i::new(1920, 1080)),
 			bot_image: Image::new(&constants.size()),
 			world,
-			rng: rng,
-			cam: cam,
+			rng,
+			cam,
 			draw: FpsWithCounter::new(20),
 			simulate: FpsWithCounter::new(20),
 			last_mouse_pos: Vec2i::default(),
@@ -714,8 +712,8 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 		self.last_mouse_pos = pos;
 		use MouseButton::*;
 		use ButtonState::*;
-		match button {
-			Left => {match state {
+		if let Left = button {
+			match state {
 				Down => {
 					self.mouse_move = true;
 				},
@@ -723,8 +721,7 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 					self.mouse_move = false;
 				},
 				_ => {},
-			}},
-			_ => {},
+			}
 		}
 	}
 
@@ -880,13 +877,13 @@ fn get_constants() -> Result<Constants, String> {
 	});
 	
 	fn stringify<'a, T: std::fmt::Display>(matches: &'a clap::ArgMatches<'a>, param: &'a str) -> impl Fn(T) -> String + 'a { 
-		return move |t: T| {
+		move |t: T| {
 			format!("Error occured while parsing arguments:\n\t{}\n\nYou provided:\n\t{}={}", t, param, matches.value_of(param).unwrap())	
 		}
 	}
 
 	fn stringify_unit<'a>(matches: &'a clap::ArgMatches<'a>, param: &'a str, error: &'a str) -> impl Fn(()) -> String + 'a { 
-		return move |_| {
+		move |_| {
 			format!("Error occured while parsing arguments:\n\t{}\n\nYou provided:\n\t{}={}", error, param, matches.value_of(param).unwrap())	
 		}
 	}
@@ -894,11 +891,11 @@ fn get_constants() -> Result<Constants, String> {
 
 fn gen_seed(mut seed: u64) -> [u8; 16] {
 	let mut result = [0u8; 16];
-	for i in 0..16 {
+	for i in &mut result {
 		seed ^= seed << 13;
 		seed ^= seed >> 17;
 		seed ^= seed << 5;
-		result[i] = (seed % 256) as u8;
+		*i = (seed % 256) as u8;
 	}
 	result
 }
@@ -1020,7 +1017,6 @@ fn main() {
 				offset: Vec2i::default(),
 				scale: 1.0,
 			}));
-			return;
 		},
 	};
 }

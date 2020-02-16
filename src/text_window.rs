@@ -105,8 +105,8 @@ impl MyEvents for TextWindow {
 		self.last_mouse_pos = pos;
 		use MouseButton::*;
 		use ButtonState::*;
-		match button {
-			Left => {match state {
+		if let Left = button {
+			match state {
 				Down => {
 					self.mouse_move = true;
 				},
@@ -114,8 +114,7 @@ impl MyEvents for TextWindow {
 					self.mouse_move = false;
 				},
 				_ => {},
-			}},
-			_ => {},
+			}
 		}
 	}
 

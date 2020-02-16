@@ -80,7 +80,7 @@ pub struct HashMapGridIterator<'a, T: 'a> {
 	iter: std::collections::hash_map::Iter<'a, Vec2i, T>,
 }
 
-pub const MOORE_DEPENDENT_NEIGHBORHOOD: [(Vec2i, Option<(Vec2i, Vec2i)>); 8] = [
+/*pub const MOORE_DEPENDENT_NEIGHBORHOOD: [(Vec2i, Option<(Vec2i, Vec2i)>); 8] = [
 	(Vec2i { x: -1, y:  0 },  None),
 	(Vec2i { x:  1, y:  0 },  None),
 	(Vec2i { x:  0, y: -1 },  None),
@@ -90,7 +90,7 @@ pub const MOORE_DEPENDENT_NEIGHBORHOOD: [(Vec2i, Option<(Vec2i, Vec2i)>); 8] = [
 	(Vec2i { x:  1, y:  1 },  Some((Vec2i { x:  1, y: 0 },  Vec2i { x: 0, y:  1 }))),
 	(Vec2i { x:  1, y: -1 },  Some((Vec2i { x:  1, y: 0 },  Vec2i { x: 0, y: -1 }))),
 	(Vec2i { x: -1, y: -1 },  Some((Vec2i { x: -1, y: 0 },  Vec2i { x: 0, y: -1 }))),
-];
+];*/
 
 pub const MOORE_NEIGHBORHOOD: [Vec2i; 8] = [
 	Vec2i { x: -1, y:  1 },
@@ -116,7 +116,7 @@ fn rem_repeat_to_interval<'a, T>(min: &T, value: &T, max: &T) -> T where
 	*value
 }
 
-pub fn available_dependent_cells<T, G: Grid<T>>(grid: &G, pos: &Vec2i) -> Vec<Vec2i> {
+/*pub fn available_dependent_cells<T, G: Grid<T>>(grid: &G, pos: &Vec2i) -> Vec<Vec2i> {
 	// TODOODODODO TODO TODO TODO
 	MOORE_DEPENDENT_NEIGHBORHOOD.iter().filter(|&(offset, dependency)| {
 		match dependency {
@@ -129,7 +129,7 @@ pub fn available_dependent_cells<T, G: Grid<T>>(grid: &G, pos: &Vec2i) -> Vec<Ve
 		}
 	}
 	).map(|(offset, _)| offset.clone() + &pos).collect()
-}
+}*/
 
 pub fn available_cells<T, G: Grid<T>>(grid: &G, pos: &Vec2i) -> Vec<Vec2i> {
 	MOORE_NEIGHBORHOOD.iter().filter(|&offset| {
@@ -440,7 +440,7 @@ impl<'a, T: Clone> Iterator for HashMapGridIterator<'a, T> {
 	type Item = (Vec2i, &'a T);
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.iter.next() {
-			Some((pos, elem)) => return Some((pos.clone(), &elem)),
+			Some((pos, elem)) => Some((pos.clone(), &elem)),
 			None => None,
 		}
 	}
