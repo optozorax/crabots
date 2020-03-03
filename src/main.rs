@@ -827,7 +827,7 @@ fn get_constants() -> Result<Constants, String> {
 	{
 		app = app.usage("index.html?help or index.html?protein=100000&topology=Infinite&a=2");
 	}
-	let matches = app.get_matches_from_safe_borrow(bufdraw::parameters::PROGRAM_PARAMETERS.iter());
+	let matches = app.get_matches_from_safe_borrow(bufdraw::PROGRAM_PARAMETERS.iter());
 
 	let matches = match matches {
 		Ok(m) => m,

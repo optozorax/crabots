@@ -12,7 +12,14 @@ if (gl === null) {
     alert("Unable to initialize WebGL. Your browser or machine may not support it.");
 }
 
+var plugins = [];
+
 canvas.focus();
+
+canvas.requestPointerLock = canvas.requestPointerLock ||
+    canvas.mozRequestPointerLock;
+document.exitPointerLock = document.exitPointerLock ||
+    document.mozExitPointerLock;
 
 function assert(flag, message) {
     if (flag == false) {
@@ -54,31 +61,49 @@ if (gl.getExtension('WEBGL_depth_texture') == null) {
 }
 
 function getArray(ptr, arr, n) {
-    return new arr(memory.buffer, ptr, n);
+    return new arr(wasm_memory.buffer, ptr, n);
 }
 
-function UTF8ToString(ptr, len) {
-    let mem = new Uint8Array(memory.buffer);
-    string = '';
-    if (len == undefined) {
-        while (true) {
-            let next = mem[ptr];
-            if (next == undefined) {
-                console.log("is it assert in js style?");
-                return;
-            }
-            if (next == 0) {
-                break
-            };
-            string += String.fromCharCode(next);
-            ptr++;
+function UTF8ToString(ptr, maxBytesToRead) {
+    let u8Array = new Uint8Array(wasm_memory.buffer, ptr);
+
+    var idx = 0;
+    var endIdx = idx + maxBytesToRead;
+
+    var str = '';
+    while (!(idx >= endIdx)) {
+        // For UTF8 byte structure, see:
+        // http://en.wikipedia.org/wiki/UTF-8#Description
+        // https://www.ietf.org/rfc/rfc2279.txt
+        // https://tools.ietf.org/html/rfc3629
+        var u0 = u8Array[idx++];
+
+        // If not building with TextDecoder enabled, we don't know the string length, so scan for \0 byte.
+        // If building with TextDecoder, we know exactly at what byte index the string ends, so checking for nulls here would be redundant.
+        if (!u0) return str;
+
+        if (!(u0 & 0x80)) { str += String.fromCharCode(u0); continue; }
+        var u1 = u8Array[idx++] & 63;
+        if ((u0 & 0xE0) == 0xC0) { str += String.fromCharCode(((u0 & 31) << 6) | u1); continue; }
+        var u2 = u8Array[idx++] & 63;
+        if ((u0 & 0xF0) == 0xE0) {
+            u0 = ((u0 & 15) << 12) | (u1 << 6) | u2;
+        } else {
+
+            if ((u0 & 0xF8) != 0xF0) console.warn('Invalid UTF-8 leading byte 0x' + u0.toString(16) + ' encountered when deserializing a UTF-8 string on the asm.js/wasm heap to a JS string!');
+
+            u0 = ((u0 & 7) << 18) | (u1 << 12) | (u2 << 6) | (u8Array[idx++] & 63);
         }
-    } else {
-        for (let i = 0; i < len; i++) {
-            string += String.fromCharCode(mem[ptr + i]);
+
+        if (u0 < 0x10000) {
+            str += String.fromCharCode(u0);
+        } else {
+            var ch = u0 - 0x10000;
+            str += String.fromCharCode(0xD800 | (ch >> 10), 0xDC00 | (ch & 0x3FF));
         }
     }
-    return string;
+
+    return str;
 }
 
 var FS = {
@@ -723,7 +748,14 @@ var importObject = {
             canvas.onmousemove = function (event) {
                 var x = event.clientX;
                 var y = event.clientY;
+
+                // TODO: do not send mouse_move when cursor is captured
                 wasm_exports.mouse_move(Math.floor(x), Math.floor(y));
+
+                // TODO: check that mouse is captured?
+                if (event.movementX != 0 && event.movementY != 0) {
+                    wasm_exports.raw_mouse_move(Math.floor(event.movementX), Math.floor(event.movementY));
+                }
             };
             canvas.onmousedown = function (event) {
                 var x = event.clientX;
@@ -821,47 +853,62 @@ var importObject = {
         fs_take_buffer: function (file_id, ptr, max_length) {
             var file = FS.loaded_files[file_id];
             console.assert(file.length <= max_length);
-            var dest = new Uint8Array(memory.buffer, ptr, max_length);
+            var dest = new Uint8Array(wasm_memory.buffer, ptr, max_length);
             for (var i = 0; i < file.length; i++) {
                 dest[i] = file[i];
             }
             delete FS.loaded_files[file_id];
+        },
+        sapp_set_cursor_grab: function (grab) {
+            if (grab) {
+                canvas.requestPointerLock();
+            } else {
+                document.exitPointerLock();
+            }
         }
     }
 };
 
+
+function register_plugins(plugins) {
+    if (plugins == undefined)
+        return;
+
+    for (var i = 0; i < plugins.length; i++) {
+        if (plugins[i].register_plugin != undefined && plugins[i].register_plugin != null) {
+            plugins[i].register_plugin(importObject);
+        }
+    }
+}
 
 function init_plugins(plugins) {
     if (plugins == undefined)
         return;
 
     for (var i = 0; i < plugins.length; i++) {
-        plugins[i].register_plugin(importObject);
-    }
-}
-
-function expose_wasm(plugins) {
-    if (plugins == undefined)
-        return;
-
-    for (var i = 0; i < plugins.length; i++) {
-        plugins[i].set_wasm_refs(memory, wasm_exports);
+        if (plugins[i].on_init != undefined && plugins[i].on_init != null) {
+            plugins[i].on_init();
+        }
     }
 }
 
 
-function load(wasm_path, plugins) {
+function miniquad_add_plugin(plugin) {
+    plugins.push(plugin);
+}
+
+function load(wasm_path) {
     var req = fetch(wasm_path);
 
-    init_plugins(plugins);
+    register_plugins(plugins);
 
     if (typeof WebAssembly.instantiateStreaming === 'function') {
         WebAssembly.instantiateStreaming(req, importObject)
             .then(obj => {
-                memory = obj.instance.exports.memory;
+                wasm_memory = obj.instance.exports.memory;
                 wasm_exports = obj.instance.exports;
 
-                expose_wasm(plugins);
+                init_plugins(plugins);
                 obj.instance.exports.main();
             });
     } else {
@@ -869,10 +916,10 @@ function load(wasm_path, plugins) {
             .then(function (x) { return x.arrayBuffer(); })
             .then(function (bytes) { return WebAssembly.instantiate(bytes, importObject); })
             .then(function (obj) {
-                memory = obj.instance.exports.memory;
+                wasm_memory = obj.instance.exports.memory;
                 wasm_exports = obj.instance.exports;
 
-                expose_wasm(plugins);
+                init_plugins(plugins);
                 obj.instance.exports.main();
             });
     }

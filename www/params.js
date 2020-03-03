@@ -1,16 +1,6 @@
 var ctx = null;
 var memory;
 
-function array_to_i32(arr) {
-    var result = 0;
-    var mul = 1;
-    for (i of arr) {
-        result += mul * i;
-        mul *= 256;
-    }
-    return result;
-}
-
 params_set_mem = function (wasm_memory, _wasm_exports) {
     memory = wasm_memory;
     ctx = {};
@@ -20,6 +10,7 @@ params_set_mem = function (wasm_memory, _wasm_exports) {
         ctx.entries.push(i);
     }
 }
+
 params_register_js_plugin = function (importObject) {
     importObject.env.param_count = function () {
         return ctx.entries.length;
@@ -37,3 +28,8 @@ params_register_js_plugin = function (importObject) {
         return ctx.entries[i][1][j].charCodeAt(0);
     }
 }
+
+miniquad_add_plugin({
+    register_plugin: params_register_js_plugin,
+    on_init: params_set_mem
+});
