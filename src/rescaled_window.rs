@@ -41,37 +41,6 @@ impl<T: MyEvents> MyEvents for RescaledWindow<T> {
 		self.external.key_event(keycode, keymods, state);
 	}
 
-
-	fn touch_one_start(&mut self, pos: &Vec2i) {
-		self.external.touch_one_start(&(pos.clone() / self.scale));
-	}
-	fn touch_one_move(&mut self, pos: &Vec2i, offset: &Vec2i) {
-		self.external.touch_one_move(&(pos.clone() / self.scale), &(offset.clone() / self.scale))
-	}
-	fn touch_one_end(&mut self) {
-		self.external.touch_one_end();
-	}
-
-	fn touch_scale_start(&mut self, pos: &Vec2i) {
-		self.external.touch_scale_start(&(pos.clone() / self.scale))
-	}
-	fn touch_scale_change(&mut self, scale: f32, pos: &Vec2i, offset: &Vec2i) {
-		self.external.touch_scale_change(scale, &(pos.clone() / self.scale), &(offset.clone() / self.scale));
-	}
-	fn touch_scale_end(&mut self) {
-		self.external.touch_scale_end()
-	}
-
-	fn touch_three_start(&mut self, pos: &Vec2i) {
-		self.external.touch_three_start(&(pos.clone() / self.scale))
-	}
-	fn touch_three_move(&mut self, pos: &Vec2i, offset: &Vec2i) {
-		self.external.touch_three_move(&(pos.clone() / self.scale), &(offset.clone() / self.scale));
-	}
-	fn touch_three_end(&mut self) {
-		self.external.touch_three_end();
-	}
-
 	fn touch_event(&mut self, phase: TouchPhase, id: u64, pos: &Vec2i) {
 		self.external.touch_event(phase, id, &(pos.clone() / self.scale));
 	}

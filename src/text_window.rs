@@ -12,8 +12,15 @@ trait ImageTrait {
 }
 
 #[derive(Delegate)]
-#[delegate(ImageTrait, target = "image")]
+#[delegate(ImageTrait, target = "window")]
 pub struct TextWindow {
+	window: TextWindowBase,
+	gesture_recognizer: GestureRecognizer,
+}
+
+#[derive(Delegate)]
+#[delegate(ImageTrait, target = "image")]
+pub struct TextWindowBase {
 	image: Image,
 	cam: FloatImageCamera,
 
@@ -31,8 +38,17 @@ pub struct TextWindow {
 
 impl TextWindow {
 	pub fn new(text: String, cam: FloatImageCamera) -> Self {
-		let font_data = include_bytes!("Anonymous Pro.ttf");
 		TextWindow {
+			window: TextWindowBase::new(text, cam),
+			gesture_recognizer: GestureRecognizer::default(),
+		}
+	}
+}
+
+impl TextWindowBase {
+	pub fn new(text: String, cam: FloatImageCamera) -> Self {
+		let font_data = include_bytes!("Anonymous Pro.ttf");
+		TextWindowBase {
 			image: Image::new(&Vec2i::new(1920, 1080)),
 			cam,
 			text_image: Image::new(&Vec2i::new(1920, 1080)),
@@ -46,7 +62,7 @@ impl TextWindow {
 	}
 }
 
-impl TextWindow {
+impl TextWindowBase {
 	fn redraw_image(&mut self) {
 		let size_text = 24.0 * self.cam.get_scale();
 		let size = text_size(&self.text_cache, &self.text, size_text);
@@ -65,29 +81,69 @@ impl TextWindow {
 
 impl MyEvents for TextWindow {
 	fn draw(&mut self) {
-		self.image.clear(&Color::gray(0));
-		if self.redraw {
-			self.redraw_image();
-			self.redraw = false
+		self.window.image.clear(&Color::gray(0));
+		if self.window.redraw {
+			self.window.redraw_image();
+			self.window.redraw = false
 		}
-		place_image(&mut self.image, &self.text_image, &self.cam.from(Vec2i::default()));
+		place_image(&mut self.window.image, &self.window.text_image, &self.window.cam.from(Vec2i::default()));
 	}
 
 	fn resize_event(&mut self, new_size: Vec2i) {
-		self.image.resize_lazy(&new_size);
-		if self.cam.to(Vec2i::default()) == Vec2i::default() {
-			self.cam.offset(&((new_size - &text_size(&self.text_cache, &self.text, 24.0 * self.cam.get_scale())) / 2));
-			self.redraw = true;
+		self.window.image.resize_lazy(&new_size);
+		if self.window.cam.to(Vec2i::default()) == Vec2i::default() {
+			self.window.cam.offset(&((new_size - &text_size(&self.window.text_cache, &self.window.text, 24.0 * self.window.cam.get_scale())) / 2));
+			self.window.redraw = true;
 		}
 	}
 
 	fn mouse_motion_event(&mut self, pos: Vec2i, _offset: Vec2i) {
-		if self.mouse_move {
-			self.cam.offset(&(pos.clone() - &self.last_mouse_pos));
+		if self.window.mouse_move {
+			self.window.cam.offset(&(pos.clone() - &self.window.last_mouse_pos));
 		}
-		self.last_mouse_pos = pos;
+		self.window.last_mouse_pos = pos;
 	}
 
+	fn mouse_button_event(&mut self, button: MouseButton, state: ButtonState, pos: Vec2i) {
+		self.window.last_mouse_pos = pos;
+		use MouseButton::*;
+		use ButtonState::*;
+		if let Left = button {
+			match state {
+				Down => {
+					self.window.mouse_move = true;
+				},
+				Up => {
+					self.window.mouse_move = false;
+				},
+				_ => {},
+			}
+		}
+	}
+
+	fn mouse_wheel_event(&mut self, pos: Vec2i, dir_vertical: MouseWheelVertical, _dir_horizontal: MouseWheelHorizontal) {
+		self.window.last_mouse_pos = pos;
+		match dir_vertical {
+			MouseWheelVertical::RotateUp => {
+				self.window.cam.scale_mul(&self.window.last_mouse_pos, 1.2);
+				self.window.redraw = true;
+			},
+			MouseWheelVertical::RotateDown => {
+				self.window.cam.scale_mul(&self.window.last_mouse_pos, 1.0 / 1.2);
+				self.window.redraw = true;
+			},
+			MouseWheelVertical::Nothing => {
+
+			}
+		}
+	}
+
+	fn touch_event(&mut self, phase: TouchPhase, id: u64, pos: &Vec2i) {
+		self.gesture_recognizer.process(&mut self.window, phase, id, pos.x as f32, pos.y as f32);
+	}
+}
+
+impl GestureEvents for TextWindowBase {
 	fn touch_one_move(&mut self, _pos: &Vec2i, offset: &Vec2i) {
 		self.cam.offset(offset);
 	}
@@ -99,39 +155,5 @@ impl MyEvents for TextWindow {
 		self.cam.offset(offset);
 		self.cam.scale_new(pos, self.current_cam_scale * scale);
 		self.redraw = true;
-	}
-
-	fn mouse_button_event(&mut self, button: MouseButton, state: ButtonState, pos: Vec2i) {
-		self.last_mouse_pos = pos;
-		use MouseButton::*;
-		use ButtonState::*;
-		if let Left = button {
-			match state {
-				Down => {
-					self.mouse_move = true;
-				},
-				Up => {
-					self.mouse_move = false;
-				},
-				_ => {},
-			}
-		}
-	}
-
-	fn mouse_wheel_event(&mut self, pos: Vec2i, dir_vertical: MouseWheelVertical, _dir_horizontal: MouseWheelHorizontal) {
-		self.last_mouse_pos = pos;
-		match dir_vertical {
-			MouseWheelVertical::RotateUp => {
-				self.cam.scale_mul(&self.last_mouse_pos, 1.2);
-				self.redraw = true;
-			},
-			MouseWheelVertical::RotateDown => {
-				self.cam.scale_mul(&self.last_mouse_pos, 1.0 / 1.2);
-				self.redraw = true;
-			},
-			MouseWheelVertical::Nothing => {
-
-			}
-		}
 	}
 }

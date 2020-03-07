@@ -126,8 +126,15 @@ struct Constants {
 }
 
 #[derive(Delegate)]
-#[delegate(ImageTrait, target = "image")]
+#[delegate(ImageTrait, target = "window")]
 struct Window<R, G> {
+	window: WindowBase<R, G>,
+	gesture_recognizer: GestureRecognizer,
+}
+
+#[derive(Delegate)]
+#[delegate(ImageTrait, target = "image")]
+struct WindowBase<R, G> {
 	image: Image,
 	bot_image: Image,
 
@@ -554,8 +561,17 @@ fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, re
 
 impl<R: Rng, G: Grid<Bot>> Window<R, G> {
 	fn new(constants: Constants, rng: R, cam: FloatImageCamera, world: World<G>) -> Self {
-		let font_data = include_bytes!("Anonymous Pro.ttf");
 		Window {
+			window: WindowBase::new(constants, rng, cam, world),
+			gesture_recognizer: GestureRecognizer::default(),
+		}
+	}
+}
+
+impl<R: Rng, G: Grid<Bot>> WindowBase<R, G> {
+	fn new(constants: Constants, rng: R, cam: FloatImageCamera, world: World<G>) -> Self {
+		let font_data = include_bytes!("Anonymous Pro.ttf");
+		WindowBase {
 			image: Image::new(&Vec2i::new(1920, 1080)),
 			bot_image: Image::new(&constants.size()),
 			world,
@@ -581,38 +597,38 @@ impl<R: Rng, G: Grid<Bot>> Window<R, G> {
 
 impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 	fn init(&mut self) {
-		self.fps.clear();
-		self.tps.clear();
+		self.window.fps.clear();
+		self.window.tps.clear();
 	}
 
 	fn update(&mut self) {
 		let mut counter = 0;
-		let rng = &mut self.rng;
-		let world = &mut self.world;
-		let constants = &self.constants;
-		let tps = &mut self.tps;
-		if let Some(d) = self.simulate.action(|clock| {
+		let rng = &mut self.window.rng;
+		let world = &mut self.window.world;
+		let constants = &self.window.constants;
+		let tps = &mut self.window.tps;
+		if let Some(d) = self.window.simulate.action(|clock| {
 			while clock.elapsed().fps() > 60.0 {
 				process_world(constants, rng, world);
 				tps.frame();
 				counter += 1;
 			}
 		}) {
-			self.performance_info.tps = d.fps() as usize * counter;
-			self.performance_info.steps_per_frame = counter;
+			self.window.performance_info.tps = d.fps() as usize * counter;
+			self.window.performance_info.steps_per_frame = counter;
 		}
 	}
 
 	fn draw(&mut self) {
-		let world = &self.world;
-		let image = &mut self.image;
-		let cam = &self.cam;
-		let text_cache = &mut self.text_cache;
-		let perf = &self.performance_info;
-		let fps = &self.fps;
-		let tps = &self.tps;
-		let bot_image = &mut self.bot_image;
-		if let Some(d) = self.draw.action(|_| {
+		let world = &self.window.world;
+		let image = &mut self.window.image;
+		let cam = &self.window.cam;
+		let text_cache = &mut self.window.text_cache;
+		let perf = &self.window.performance_info;
+		let fps = &self.window.fps;
+		let tps = &self.window.tps;
+		let bot_image = &mut self.window.bot_image;
+		if let Some(d) = self.window.draw.action(|_| {
 			image.clear(&Color::gray(0));
 			if world.bots.is_finite() {
 				bot_image.clear(&Color::gray(0));
@@ -669,26 +685,80 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 			draw_rect(image, &(pos.clone() - &border_vec), &(text_size(text_cache, &text, text_sz) + &border_vec + &border_vec), &Color::rgba(0, 0, 0, 150));
 			draw_text(image, text_cache, &text, text_sz, &pos, &Color::rgba(255, 255, 255, 255));
 		}) {
-			self.performance_info.fps = d.fps() as usize;
+			self.window.performance_info.fps = d.fps() as usize;
 		}
-		self.fps.frame();
+		self.window.fps.frame();
 	}
 
 	fn resize_event(&mut self, new_size: Vec2i) {
-		self.image.resize_lazy(&new_size);
-		if self.cam.to(Vec2i::default()) == Vec2i::default() {
-			self.cam.offset(&((new_size - &(self.constants.size() * self.constants.scale)) / 2));
-		self.fps.clear();
+		self.window.image.resize_lazy(&new_size);
+		if self.window.cam.to(Vec2i::default()) == Vec2i::default() {
+			self.window.cam.offset(&((new_size - &(self.window.constants.size() * self.window.constants.scale)) / 2));
+		self.window.fps.clear();
 		}
 	}
 
 	fn mouse_motion_event(&mut self, pos: Vec2i, _offset: Vec2i) {
-		if self.mouse_move {
-			self.cam.offset(&(pos.clone() - &self.last_mouse_pos));
+		if self.window.mouse_move {
+			self.window.cam.offset(&(pos.clone() - &self.window.last_mouse_pos));
 		}
-		self.last_mouse_pos = pos;
+		self.window.last_mouse_pos = pos;
 	}
 
+	fn mouse_button_event(&mut self, button: MouseButton, state: ButtonState, pos: Vec2i) {
+		self.window.last_mouse_pos = pos;
+		use MouseButton::*;
+		use ButtonState::*;
+		if let Left = button {
+			match state {
+				Down => {
+					self.window.mouse_move = true;
+				},
+				Up => {
+					self.window.mouse_move = false;
+				},
+				_ => {},
+			}
+		}
+	}
+
+	fn mouse_wheel_event(&mut self, pos: Vec2i, dir_vertical: MouseWheelVertical, _dir_horizontal: MouseWheelHorizontal) {
+		self.window.last_mouse_pos = pos;
+		match dir_vertical {
+			MouseWheelVertical::RotateUp => {
+				self.window.cam.scale_add(&self.window.last_mouse_pos, 1.0);
+			},
+			MouseWheelVertical::RotateDown => {
+				self.window.cam.scale_add(&self.window.last_mouse_pos, -1.0);
+			},
+			MouseWheelVertical::Nothing => {
+
+			}
+		}
+	}
+
+	fn key_event(&mut self, keycode: KeyCode, _keymods: KeyMods, state: ButtonState) {
+		if let bufdraw::ButtonState::Down = state {
+			match keycode {
+				KeyCode::R => {
+					for _ in 0..self.window.constants.bots {
+						insert_random_bot(&self.window.constants, &mut self.window.rng, &mut self.window.world);		
+					}
+				},
+				KeyCode::C => {
+					self.window.world.bots.clear();
+				},
+				_ => {},
+			}
+		}
+	}
+
+	fn touch_event(&mut self, phase: TouchPhase, id: u64, pos: &Vec2i) {
+		self.gesture_recognizer.process(&mut self.window, phase, id, pos.x as f32, pos.y as f32);
+	}
+}
+
+impl<R, G> GestureEvents for WindowBase<R, G> {
 	fn touch_three_move(&mut self, _pos: &Vec2i, offset: &Vec2i) {
 		self.cam.offset(offset);
 	}
@@ -705,54 +775,6 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 		self.cam.offset(&offset);
 		if current_scale != 0 {
 			self.cam.scale_new(&pos, current_scale as f32);	
-		}
-	}
-
-	fn mouse_button_event(&mut self, button: MouseButton, state: ButtonState, pos: Vec2i) {
-		self.last_mouse_pos = pos;
-		use MouseButton::*;
-		use ButtonState::*;
-		if let Left = button {
-			match state {
-				Down => {
-					self.mouse_move = true;
-				},
-				Up => {
-					self.mouse_move = false;
-				},
-				_ => {},
-			}
-		}
-	}
-
-	fn mouse_wheel_event(&mut self, pos: Vec2i, dir_vertical: MouseWheelVertical, _dir_horizontal: MouseWheelHorizontal) {
-		self.last_mouse_pos = pos;
-		match dir_vertical {
-			MouseWheelVertical::RotateUp => {
-				self.cam.scale_add(&self.last_mouse_pos, 1.0);
-			},
-			MouseWheelVertical::RotateDown => {
-				self.cam.scale_add(&self.last_mouse_pos, -1.0);
-			},
-			MouseWheelVertical::Nothing => {
-
-			}
-		}
-	}
-
-	fn key_event(&mut self, keycode: KeyCode, _keymods: KeyMods, state: ButtonState) {
-		if let bufdraw::ButtonState::Down = state {
-			match keycode {
-				KeyCode::R => {
-					for _ in 0..self.constants.bots {
-						insert_random_bot(&self.constants, &mut self.rng, &mut self.world);		
-					}
-				},
-				KeyCode::C => {
-					self.world.bots.clear();
-				},
-				_ => {},
-			}
 		}
 	}
 }
