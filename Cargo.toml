@@ -7,11 +7,16 @@ edition = "2018"
 [dependencies]
 rand = "0.7"
 rand_pcg = "0.2"
-bufdraw = { git = "https://github.com/optozorax/bufdraw", version = "0.1.25" }
+bufdraw = { git = "https://github.com/optozorax/bufdraw", version = "0.1.26" }
 # bufdraw = { path = "../bufdraw" }
 log = "0.4"
 ambassador = "0.2.1"
 enum-utils = "0.1.2"
+
+[dependencies.gesture-recognizer]
+git = "https://github.com/optozorax/gesture-recognizer"
+default-features = false
+features = ["miniquad"]
 
 [dependencies.clap]
 version = "2.33"

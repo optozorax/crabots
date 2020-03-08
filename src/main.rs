@@ -7,6 +7,8 @@ use ambassador::Delegate;
 
 use clap::clap_app;
 
+use gesture_recognizer::*;
+
 use bufdraw::*;
 use bufdraw::image::*;
 use bufdraw::measure::*;
@@ -754,27 +756,27 @@ impl<R: Rng, G: Grid<Bot>> MyEvents for Window<R, G> {
 	}
 
 	fn touch_event(&mut self, phase: TouchPhase, id: u64, pos: &Vec2i) {
-		self.gesture_recognizer.process(&mut self.window, phase, id, pos.x as f32, pos.y as f32);
+		self.gesture_recognizer.process(&mut self.window, phase.into(), id, pos.x as f32, pos.y as f32);
 	}
 }
 
 impl<R, G> GestureEvents for WindowBase<R, G> {
-	fn touch_three_move(&mut self, _pos: &Vec2i, offset: &Vec2i) {
-		self.cam.offset(offset);
+	fn touch_three_move(&mut self, _pos: &Point, offset: &Point) {
+		self.cam.offset(&offset.into_my());
 	}
 
-	fn touch_one_move(&mut self, _pos: &Vec2i, offset: &Vec2i) {
-		self.cam.offset(&offset);
+	fn touch_one_move(&mut self, _pos: &Point, offset: &Point) {
+		self.cam.offset(&offset.into_my());
 	}
 
-	fn touch_scale_start(&mut self, _pos: &Vec2i) {
+	fn touch_scale_start(&mut self, _pos: &Point) {
 		self.current_cam_scale = self.cam.get_scale();
 	}
-	fn touch_scale_change(&mut self, scale: f32, pos: &Vec2i, offset: &Vec2i) {
+	fn touch_scale_change(&mut self, scale: f32, pos: &Point, offset: &Point) {
 		let current_scale = (self.current_cam_scale as f32 * scale) as u8;
-		self.cam.offset(&offset);
+		self.cam.offset(&offset.into_my());
 		if current_scale != 0 {
-			self.cam.scale_new(&pos, current_scale as f32);	
+			self.cam.scale_new(&pos.into_my(), current_scale as f32);	
 		}
 	}
 }

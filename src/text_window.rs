@@ -4,11 +4,23 @@ use crate::camera::*;
 use ambassador::Delegate;
 use ambassador::delegatable_trait_remote;
 
+use gesture_recognizer::*;
+
 #[delegatable_trait_remote]
 trait ImageTrait {
 	fn get_rgba8_buffer(&self) -> &[u8];
 	fn get_width(&self) -> usize;
 	fn get_height(&self) -> usize;
+}
+
+pub trait IntoMy {
+	fn into_my(&self) -> Vec2i;
+}
+
+impl IntoMy for Point {
+	fn into_my(&self) -> Vec2i {
+		Vec2i { x: self.x as i32, y: self.y as i32 }
+	}
 }
 
 #[derive(Delegate)]
@@ -139,21 +151,21 @@ impl MyEvents for TextWindow {
 	}
 
 	fn touch_event(&mut self, phase: TouchPhase, id: u64, pos: &Vec2i) {
-		self.gesture_recognizer.process(&mut self.window, phase, id, pos.x as f32, pos.y as f32);
+		self.gesture_recognizer.process(&mut self.window, phase.into(), id, pos.x as f32, pos.y as f32);
 	}
 }
 
 impl GestureEvents for TextWindowBase {
-	fn touch_one_move(&mut self, _pos: &Vec2i, offset: &Vec2i) {
-		self.cam.offset(offset);
+	fn touch_one_move(&mut self, _pos: &Point, offset: &Point) {
+		self.cam.offset(&offset.into_my());
 	}
 
-	fn touch_scale_start(&mut self, _pos: &Vec2i) {
+	fn touch_scale_start(&mut self, _pos: &Point) {
 		self.current_cam_scale = self.cam.get_scale();
 	}
-	fn touch_scale_change(&mut self, scale: f32, pos: &Vec2i, offset: &Vec2i) {
-		self.cam.offset(offset);
-		self.cam.scale_new(pos, self.current_cam_scale * scale);
+	fn touch_scale_change(&mut self, scale: f32, pos: &Point, offset: &Point) {
+		self.cam.offset(&offset.into_my());
+		self.cam.scale_new(&pos.into_my(), self.current_cam_scale * scale);
 		self.redraw = true;
 	}
 }
