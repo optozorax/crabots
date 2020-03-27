@@ -1,37 +1,37 @@
-use rand::SeedableRng;
-use rand::seq::SliceRandom;
-use rand::Rng;
-use rand_pcg::Pcg32;
+pub use rand::SeedableRng;
+pub use rand::seq::SliceRandom;
+pub use rand::Rng;
+pub use rand_pcg::Pcg32;
 
-use ambassador::Delegate;
+pub use ambassador::Delegate;
 
-use clap::clap_app;
+pub use clap::clap_app;
 
-use gesture_recognizer::*;
+pub use gesture_recognizer::*;
 
-use bufdraw::*;
-use bufdraw::image::*;
-use bufdraw::measure::*;
-use bufdraw::text::*;
-use bufdraw::vec::Vec2i;
-use bufdraw::image::Color;
-use bufdraw::interpolate::Interpolate;
+pub use bufdraw::*;
+pub use bufdraw::image::*;
+pub use bufdraw::measure::*;
+pub use bufdraw::text::*;
+pub use bufdraw::vec::Vec2i;
+pub use bufdraw::image::Color;
+pub use bufdraw::interpolate::Interpolate;
 
-mod gridtools;
-use gridtools::*;
-mod text_window;
-use text_window::*;
-mod camera;
-use crate::camera::*;
-mod rescaled_window;
-use crate::rescaled_window::*;
+pub mod gridtools;
+pub use gridtools::*;
+pub mod text_window;
+pub use text_window::*;
+pub mod camera;
+pub use crate::camera::*;
+pub mod rescaled_window;
+pub use crate::rescaled_window::*;
 
 #[derive(Clone, Debug)]
 /// Integer from 0 to PROGRAM_SIZE
-struct ProgramPos(usize);
+pub struct ProgramPos(usize);
 
 #[derive(Clone, Debug)]
-enum Comands {
+pub enum Comands {
 	Multiply,
 	Photosynthesis,
 	Attack,
@@ -40,57 +40,57 @@ enum Comands {
 }
 
 #[derive(Clone, Debug)]
-struct Comand {
-	comand: Comands,
-	goto_success: ProgramPos,
-	goto_fail: ProgramPos,
+pub struct Comand {
+	pub comand: Comands,
+	pub goto_success: ProgramPos,
+	pub goto_fail: ProgramPos,
 }
 
-type Program = Vec<Comand>;
+pub type Program = Vec<Comand>;
 
 #[derive(Clone, Debug)]
-struct Bot {
-	color: Color,
+pub struct Bot {
+	pub color: Color,
 
-	timer: u32,
-	protein: u32,
-	alive: bool,
+	pub timer: u32,
+	pub protein: u32,
+	pub alive: bool,
 
-	program: Program,
-	eip: ProgramPos,
+	pub program: Program,
+	pub eip: ProgramPos,
 }
 
-trait Creature {
+pub trait Creature {
 	fn make_random<R: Rng + ?Sized>(rng: &mut R) -> Self;
 	fn mutate<R: Rng + ?Sized>(&mut self, rng: &mut R);
 }
 
-struct Resources {
-	free_protein: u32,
-	oxygen: u32,
-	carbon: u32,
+pub struct Resources {
+	pub free_protein: u32,
+	pub oxygen: u32,
+	pub carbon: u32,
 }
 
-struct World<G> {
-	size: Vec2i,
-	resources: Resources,
-	bots: G,
+pub struct World<G> {
+	pub size: Vec2i,
+	pub resources: Resources,
+	pub bots: G,
 }
 
-trait Stole {
+pub trait Stole {
 	fn can_stole(self) -> bool;
 	fn stole(&mut self, other: &mut Self);
 	fn stole_full(&mut self, other: &mut Self);
 }
 
-struct PerformanceInfo {
-	tps: usize,
-	steps_per_frame: usize,
-	fps: usize,
+pub struct PerformanceInfo {
+	pub tps: usize,
+	pub steps_per_frame: usize,
+	pub fps: usize,
 }
 
 #[derive(Clone, enum_utils::FromStr, enum_utils::IterVariants, Debug)]
-enum FieldTopology {
+pub enum FieldTopology {
 	Rect,
 	Torus,
 	VerticalCylinder,
@@ -99,69 +99,69 @@ enum FieldTopology {
 }
 
 #[derive(Clone, enum_utils::FromStr, enum_utils::IterVariants, Debug)]
-enum FieldContainer {
+pub enum FieldContainer {
 	HashMap,
 	Vec,
 }
 
 #[derive(Debug)]
-struct Constants {
-	width: i32,
-	height: i32,
-	scale: f32,
-	image_scale: u8,
-	benchmark: bool,
+pub struct Constants {
+	pub width: i32,
+	pub height: i32,
+	pub scale: f32,
+	pub image_scale: u8,
+	pub benchmark: bool,
 
-	bots: usize,
-	protein: u32,
-	oxygen: u32,
-	carbon: u32,
+	pub bots: usize,
+	pub protein: u32,
+	pub oxygen: u32,
+	pub carbon: u32,
 
-	die: u32,
-	live: u32,
-	comand: usize,
-	multiply: u32,
-	seed: u64,
+	pub die: u32,
+	pub live: u32,
+	pub comand: usize,
+	pub multiply: u32,
+	pub seed: u64,
 
-	topology: FieldTopology,
-	container: FieldContainer,
+	pub topology: FieldTopology,
+	pub container: FieldContainer,
 }
 
 #[derive(Delegate)]
 #[delegate(ImageTrait, target = "window")]
-struct Window<R, G> {
-	window: WindowBase<R, G>,
-	gesture_recognizer: GestureRecognizer,
+pub struct Window<R, G> {
+	pub window: WindowBase<R, G>,
+	pub gesture_recognizer: GestureRecognizer,
 }
 
 #[derive(Delegate)]
 #[delegate(ImageTrait, target = "image")]
-struct WindowBase<R, G> {
-	image: Image,
-	bot_image: Image,
+pub struct WindowBase<R, G> {
+	pub image: Image,
+	pub bot_image: Image,
 
-	world: World<G>,
-	rng: R,
-	cam: FloatImageCamera,
+	pub world: World<G>,
+	pub rng: R,
+	pub cam: FloatImageCamera,
 
-	draw: FpsWithCounter,
-	simulate: FpsWithCounter,
+	pub draw: FpsWithCounter,
+	pub simulate: FpsWithCounter,
 
-	last_mouse_pos: Vec2i,
-	mouse_move: bool,
-	current_cam_scale: f32,
+	pub last_mouse_pos: Vec2i,
+	pub mouse_move: bool,
+	pub current_cam_scale: f32,
 
-	text_cache: TextCache,
+	pub text_cache: TextCache,
 
-	performance_info: PerformanceInfo,
+	pub performance_info: PerformanceInfo,
 
-	fps: FpsByLastTime,
-	tps: FpsByLastTime,
+	pub fps: FpsByLastTime,
+	pub tps: FpsByLastTime,
 
-	constants: Constants,
+	pub constants: Constants,
 }
 
-mod colors {
+pub mod colors {
 	use super::Color;
 
 	pub(super) const BLACK: Color = Color { 
@@ -207,7 +207,7 @@ mod colors {
 	};
 }
 
-const PROGRAM_SIZE: usize = 5;
+pub const PROGRAM_SIZE: usize = 5;
 
 //----------------------------------------------------------------------------
 //----------------------------------------------------------------------------
@@ -335,7 +335,7 @@ impl Creature for Bot {
 	}
 }
 
-fn normalize_coords(mut pos: Vec2i, size: &Vec2i) -> Vec2i {
+pub fn normalize_coords(mut pos: Vec2i, size: &Vec2i) -> Vec2i {
 	pos.x = pos.x.abs();
 	pos.y = pos.y.abs();
 	pos.x %= size.x;
@@ -343,7 +343,7 @@ fn normalize_coords(mut pos: Vec2i, size: &Vec2i) -> Vec2i {
 	pos
 }
 
-fn insert_random_bot<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, mut rng: &mut R, world: &mut World<G>) -> bool {
+pub fn insert_random_bot<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, mut rng: &mut R, world: &mut World<G>) -> bool {
 	let mut bot = Bot::make_random(&mut rng);
 	let mut bot_pos = Vec2i {
 		x: rng.gen(),
@@ -360,7 +360,7 @@ fn insert_random_bot<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, mut r
 	}
 } 
 
-fn process_world<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, mut rng: &mut R, world: &mut World<G>) {
+pub fn process_world<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, mut rng: &mut R, world: &mut World<G>) {
 	let mut positions: Vec<Vec2i> = world.bots.iter().map(|x| x.0).collect();
 	positions.sort();
 	for pos in positions {
@@ -399,7 +399,7 @@ impl Drop for Bot {
 	}
 }
 
-fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, resources: &mut Resources, bots: &mut G, pos: Vec2i) -> Option<(Vec2i, Bot)> {
+pub fn process<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, rng: &mut R, resources: &mut Resources, bots: &mut G, pos: Vec2i) -> Option<(Vec2i, Bot)> {
 	let mut bot = bots.get_owned(&pos)?;
 
 	bot.timer = bot.timer.saturating_sub(1);
@@ -781,7 +781,7 @@ impl<R, G> GestureEvents for WindowBase<R, G> {
 	}
 }
 
-fn init_world<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, mut rng: &mut R, g: G) -> World<G> {
+pub fn init_world<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, mut rng: &mut R, g: G) -> World<G> {
 	let mut world = World {
 		size: constants.size(),
 
@@ -802,12 +802,12 @@ fn init_world<R: Rng + ?Sized, G: Grid<Bot>>(constants: &Constants, mut rng: &mu
 }
 
 impl Constants {
-	fn size(&self) -> Vec2i {
+	pub fn size(&self) -> Vec2i {
 		Vec2i::new(self.width, self.height)
 	}
 }
 
-fn get_constants() -> Result<Constants, String> {
+pub fn get_constants() -> Result<Constants, String> {
 	#[cfg(target_arch = "wasm32")]
 	let default_scale = "2";
 
@@ -913,7 +913,7 @@ fn get_constants() -> Result<Constants, String> {
 	}
 }
 
-fn gen_seed(mut seed: u64) -> [u8; 16] {
+pub fn gen_seed(mut seed: u64) -> [u8; 16] {
 	let mut result = [0u8; 16];
 	for i in &mut result {
 		seed ^= seed << 13;
@@ -924,7 +924,7 @@ fn gen_seed(mut seed: u64) -> [u8; 16] {
 	result
 }
 
-fn run_benchmark() -> String {
+pub fn run_benchmark() -> String {
 	let constants = Constants {
 		width: 100,
 		height: 100,
@@ -977,7 +977,7 @@ fn run_benchmark() -> String {
 	);
 }
 
-fn main3<G: 'static + Grid<Bot>>(constants: Constants, grid: G) {
+pub fn main3<G: 'static + Grid<Bot>>(constants: Constants, grid: G) {
 	let mut rng = Pcg32::from_seed(gen_seed(constants.seed));
 	let camera = FloatImageCamera {
 		offset: Vec2i::default(),
@@ -987,7 +987,7 @@ fn main3<G: 'static + Grid<Bot>>(constants: Constants, grid: G) {
 	start(RescaledWindow { scale: constants.image_scale as i32, external: Window::new(constants, rng, camera, world) });
 }
 
-fn main2() -> Result<(), String> {
+pub fn main2() -> Result<(), String> {
 	let constants = get_constants()?;
 
 	if constants.benchmark {
@@ -1031,16 +1031,4 @@ fn main2() -> Result<(), String> {
 	};
 
 	Ok(())
-}
-
-fn main() {
-	match main2() {
-		Ok(()) => {},
-		Err(m) => {
-			start(TextWindow::new(preprocess_text(&m, 4, Some(100), true), FloatImageCamera {
-				offset: Vec2i::default(),
-				scale: 1.0,
-			}));
-		},
-	};
 }
